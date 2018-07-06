@@ -4,10 +4,10 @@ CFG_TA_DEBUG ?= 1
 CFG_TEE_TA_LOG_LEVEL ?= 1
 
 global-incdirs-y += include
-global-incdirs-y += reference/src/include
+global-incdirs-y += reference/include
 global-incdirs-y += platform/include
 
-cflags-y += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector
+cflags-y += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector -mno-unaligned-access
 
 ifeq ($(CFG_TA_DEBUG),y)
 cflags-y += -DfTPMDebug=1
@@ -34,6 +34,6 @@ srcs-y += platform/PPPlat.c
 srcs-y += platform/RunCommand.c
 srcs-y += platform/Unique.c
 srcs-y += platform/EPS.c
-srcs-y += reference/src/RuntimeSupport.c
+srcs-y += reference/RuntimeSupport.c
 
 srcs-y += fTPM.c
