@@ -1,6 +1,6 @@
 # MS-IoT fTPM
 ## Trusted firmware for Windows based AArch32 (32-bit) ARM SoC's
-Please see the (**UPDATE**) build-firmware.md document in project-kayla for information on including this TA in an IoTCore image.
+Please see the build-firmware.md document in project-kayla (**UPDATE**) for information on including this TA in an IoTCore image.
 
 ## Included TAs
 
@@ -49,6 +49,7 @@ $ mkdir devel
 $ cd devel
 $ git clone https://github.com/ms-iot/optee_os.git
 ```
+ (**UPDATE**)
 
 #### 1. Build OpTEE OS for the target platform
 TA_CROSS_COMPILE should point to the ARM toolchain installed in step 3.
@@ -56,7 +57,7 @@ TA_CROSS_COMPILE should point to the ARM toolchain installed in step 3.
 $ cd ~/devel/optee_os
 $ CROSS_COMPILE=~/toolchains/gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf- make PLATFORM=imx-mx6qhmbedge CFLAGS="-fshort-wchar" platform-cflags="-fshort-wchar" CFG_NS_ENTRY_ADDR=0x10820000 CFG_TEE_CORE_LOG_LEVEL=4 CFG_REE_FS=n CFG_RPMB_FS=y CFG_RPMB_TESTKEY=y CFG_RPMB_WRITE_KEY=y CFG_TA_HELLO_WORLD=y -j20
 ```
-Additional information on ms-iot OpTEE OS can be found at https://github.com/ms-iot/optee_os.
+Additional information on ms-iot OpTEE OS can be found at https://github.com/ms-iot/optee_os. (**UPDATE**)
 
 CFG_NS_ENTRY_ADDR may be different for various boards:
 ```
@@ -71,6 +72,7 @@ PLATFORM=imx-mx6qsabresd CFG_NS_ENTRY_ADDR=0x10820000
 $ cd ~/devel
 $ git clone https://github.com/Microsoft/ms-tpm-20-ref.git
 ```
+ (**UPDATE**)
 
 #### 1. Initialize the git submodules
 ```
