@@ -1,13 +1,11 @@
-
 FTPM_FLAGS = -DGCC -DUSE_WOLFCRYPT -DSIMULATION=NO -DUSE_PLATFORM_EPS -DVTPM
 FTPM_DEBUG =  -DCOMPILER_CHECKS=YES -DfTPMDebug -DRUNTIME_SIZE_CHECKS -DLIBRARY_COMPATIBILITY_CHECK
 FTPM_RELEASE = -DCOMPILER_CHECKS=NO -DRUNTIME_SIZE_CHECKS=NO -DLIBRARY_COMPATIBILITY_CHECK=NO
 
-
 #
 # The fTPM needs to overwrite some of the header files used in the reference implementation. The search order GCC
-# uses is dependent on the order the '-Idirectory' arguments are passed in. This is depended on the optee_os build
-# system which makes it brittle. Force including these files here will make sure the correct files are used.
+# uses is dependent on the order the '-I/include/path' arguments are passed in. This is depended on the optee_os build
+# system which makes it brittle. Force including these files here will make sure the correct files are used first.
 #
 
 FTPM_INCLUDES = -include ./reference/include/VendorString.h -include ./reference/include/implementation.h
@@ -50,8 +48,11 @@ global-incdirs-y += tpm_symlink/TPMCmd/tpm/include/ltc
 global-incdirs-y += tpm_symlink/TPMCmd/tpm/include/prototypes
 global-incdirs-y += tpm_symlink/TPMCmd/tpm/include/wolf
 
-#Generated in WSL using:
-#  find -name *.c | while read line; do echo XXXX$line; done | sed -e 's/XXXX.\//srcs-y += tpm_symlink/TPMCmd/tpm/src//g'
+#
+# Generated in WSL using:
+# find -name *.c | while read line; do echo XXXX$line; done | sed -e 's/XXXX.\//srcs-y += tpm_symlink/TPMCmd/tpm/src//g'
+# This may need to be updated if there are any changes to the reference implementation.
+#
 
 srcs-y += tpm_symlink/TPMCmd/tpm/src/command/Asymmetric/ECC_Parameters.c
 srcs-y += tpm_symlink/TPMCmd/tpm/src/command/Asymmetric/ECDH_KeyGen.c
