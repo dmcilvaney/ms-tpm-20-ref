@@ -8,4 +8,3 @@ all:
 .PHONY: clean
 clean:
 	$(MAKE) -C fTPM clean
-	#rm -rf out/wolfssl out/TAs

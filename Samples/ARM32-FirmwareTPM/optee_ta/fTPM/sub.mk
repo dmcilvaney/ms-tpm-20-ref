@@ -19,6 +19,9 @@ cflags-y += -Os
 cflags-y += -DNDEBUG
 endif
 
+all: create_lib_symlinks
+clean: clean_lib_symlinks
+
 subdirs-y += lib
 
 srcs-y += platform/AdminPPI.c

@@ -21,12 +21,6 @@ cflags-y += $(FTPM_RELEASE)
 endif
 
 #
-# TPM Code
-#
-
-all:  ./lib/tpm/tpm_symlink
-
-#
 # For the purposes of this command the current working directory is the makefile root (/fTPM) folder,
 # but the symlink will be created relative to THIS directory so the source requires an extra '../../'.
 #
@@ -43,6 +37,13 @@ all:  ./lib/tpm/tpm_symlink
 	ln -s ../../$(TPM_ROOT) ./lib/tpm/tpm_symlink; \
 	fi
 
+.PHONY: remove_tpm_symlink
+remove_tpm_symlink:
+	@if [ -L ./lib/tpm/tpm_symlink ] ; \
+	then \
+	unlink ./lib/tpm/tpm_symlink ; \
+	echo Clearing symlink to the TPM folder: $(abspath $(TPM_ROOT)) ; \
+	fi
 
 global-incdirs-y += tpm_symlink/TPMCmd/tpm/include
 global-incdirs-y += tpm_symlink/TPMCmd/tpm/include/ltc

@@ -12,8 +12,6 @@ WARNING_SUPPRESS = -Wno-unused-function -Wno-switch-default -Wno-suggest-attribu
 
 cflags-y += $(WOLF_SSL_FLAGS) $(WARNING_SUPPRESS)
 
-all: ./lib/wolf/wolf_symlink
-
 #
 # For the purposes of this command the current working directory is the makefile root (/fTPM) folder,
 # but the symlink will be created relative to THIS directory so the source requires an extra '../../'.
@@ -28,9 +26,13 @@ all: ./lib/wolf/wolf_symlink
 	ln -s ../../$(WOLF_ROOT) ./lib/wolf/wolf_symlink; \
 	fi
 
-#
-# WolfSSL Code
-#
+.PHONY: remove_wolf_symlink
+remove_wolf_symlink:
+	@if [ -L ./lib/wolf/wolf_symlink ] ; \
+	then \
+	unlink ./lib/wolf/wolf_symlink ; \
+	echo Clearing symlink to the Wolf folder: $(abspath $(WOLF_ROOT)) ; \
+	fi
 
 global-incdirs-y += wolf_symlink
 
