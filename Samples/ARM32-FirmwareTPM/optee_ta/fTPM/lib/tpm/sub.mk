@@ -37,7 +37,7 @@ endif
 
 .PHONY: remove_tpm_symlink
 remove_tpm_symlink:
-	@if [ -L ./lib/tpm/tpm_symlink ] ; \
+	@if [ -e ./lib/tpm/tpm_symlink ] ; \
 	then \
 	unlink ./lib/tpm/tpm_symlink ; \
 	echo Clearing symlink to the TPM folder: $(abspath $(TPM_ROOT)) ; \

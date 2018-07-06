@@ -28,7 +28,7 @@ cflags-y += $(WOLF_SSL_FLAGS) $(WARNING_SUPPRESS)
 
 .PHONY: remove_wolf_symlink
 remove_wolf_symlink:
-	@if [ -L ./lib/wolf/wolf_symlink ] ; \
+	@if [ -e ./lib/wolf/wolf_symlink ] ; \
 	then \
 	unlink ./lib/wolf/wolf_symlink ; \
 	echo Clearing symlink to the Wolf folder: $(abspath $(WOLF_ROOT)) ; \

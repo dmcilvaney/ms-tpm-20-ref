@@ -26,10 +26,10 @@ See https://github.com/OP-TEE/optee_os/blob/master/documentation/build_system.md
 #### 1. Enable Windows Subsystem for Linux
 See instructions at https://docs.microsoft.com/en-us/windows/wsl/install-win10
 
-#### 1. Launch Bash
+#### 2. Launch Bash
 Search for "bash" in the start menu, OR press Windows key + 'R', then type bash.
 
-#### 1. Install the ARM tool chain
+#### 3. Install the ARM tool chain
 Install the ARM toolchain to a directory of your choice.
 
 In WSL:
@@ -41,7 +41,7 @@ tar xf gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf.tar.xz
 rm gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf.tar.xz
 ```
 
-#### 1. Clone the OpTEE OS source code (if you don't have a copy)
+#### 4. Clone the OpTEE OS source code (if you don't have a copy)
 If you do not already have a version of the ms-iot OpTEE OS repo cloned on your machine you may run:
 ```
 $ cd ~
@@ -51,7 +51,7 @@ $ git clone https://github.com/ms-iot/optee_os.git
 ```
  (**UPDATE**)
 
-#### 1. Build OpTEE OS for the target platform
+#### 5. Build OpTEE OS for the target platform
 TA_CROSS_COMPILE should point to the ARM toolchain installed in step 3.
 ```
 $ cd ~/devel/optee_os
@@ -67,14 +67,14 @@ PLATFORM=imx-mx6qhmbedge CFG_NS_ENTRY_ADDR=0x10820000
 PLATFORM=imx-mx6qsabresd CFG_NS_ENTRY_ADDR=0x10820000
 ```
 
-#### 1. Clone the ms-tpm-20-ref source code
+#### 6. Clone the ms-tpm-20-ref source code
 ```
 $ cd ~/devel
 $ git clone https://github.com/Microsoft/ms-tpm-20-ref.git
 ```
  (**UPDATE**)
 
-#### 1. Initialize the git submodules
+#### 7. Initialize the git submodules
 ```
 $ cd ~/devel/ms-tpm-20-ref
 $ git submodule init
