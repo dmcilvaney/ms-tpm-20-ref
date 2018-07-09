@@ -12,7 +12,7 @@
 //**Includes
 #include <stdint.h>
 #include <trace.h>
-#include "Swap.h"
+#include "swap.h"
 #include "Implementation.h"
 #include "TpmSal.h"
 #include "TpmError.h"
