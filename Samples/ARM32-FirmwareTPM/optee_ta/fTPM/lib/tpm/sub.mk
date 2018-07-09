@@ -8,7 +8,7 @@ FTPM_RELEASE = -DCOMPILER_CHECKS=NO -DRUNTIME_SIZE_CHECKS=NO -DLIBRARY_COMPATIBI
 # system which makes it brittle. Force including these files here will make sure the correct files are used first.
 #
 
-FTPM_INCLUDES = -include ./reference/include/VendorString.h -include ./reference/include/implementation.h
+FTPM_INCLUDES = -include ./reference/include/VendorString.h -include ./reference/include/Implementation.h
 
 cflags-y += $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(WARNING_SUPPRESS) $(FTPM_INCLUDES) -mno-unaligned-access
 
