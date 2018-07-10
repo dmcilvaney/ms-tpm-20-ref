@@ -202,7 +202,7 @@
 #define ALG_SHA256                      ALG_YES
 #define ALG_SHA384                      ALG_YES
 #define ALG_SHA512                      ALG_YES
-#define ALG_SM2                         (ALG_YES && ALG_ECC)
+#define ALG_SM2                         (ALG_NO && ALG_ECC)
 #define ALG_SM3_256                     ALG_NO
 #define ALG_SM4                         ALG_NO
 #define ALG_SYMCIPHER                   ALG_YES

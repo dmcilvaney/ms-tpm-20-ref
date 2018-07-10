@@ -42,10 +42,14 @@ string.
 // The following line should be un-commented and a vendor-specific firmware V1
 // should be provided here.
 // The FIRMWARE_V2 may also be defined as appropriate.
-#define   FIRMWARE_V1         (0x20160210)
+
+//Date of last update:
+#define   FIRMWARE_V1         (0x20180710)
 // the less significant 32-bits of a vendor-specific value
 // indicating the version of the firmware
-#define   FIRMWARE_V2         (0x00105400)
+
+//Time of last update:
+#define   FIRMWARE_V2         (0x00105300)
 
 // The following #if macro may be deleted after a proper FIRMWARE_V1 is provided.
 #ifndef FIRMWARE_V1
