@@ -4,13 +4,12 @@ WOLF_SSL_FLAGS = -DSINGLE_THREADED -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPE
 #
 # Wolfcrypt has multiple unused functions, unfortunately the OPTEE build system can only turn off compiler flags for
 # files in the same directory as the sub.mk file. It is not possible to place sub.mk files in the git submodules without
-# creating a new fork of each submodule repo. To avoid spurious warnings these warnings are disabled here globally. The
-# TPM also causes a number of warnings.
+# creating a new fork of each submodule repo. To avoid spurious warnings these warnings are disabled here globally.
 #
 
-WARNING_SUPPRESS = -Wno-unused-function -Wno-switch-default -Wno-suggest-attribute=noreturn -Wno-cast-align -Wno-missing-braces -Wno-sign-compare
+WOLF_WARNING_SUPPRESS = -Wno-unused-function
 
-cflags-y += $(WOLF_SSL_FLAGS) $(WARNING_SUPPRESS)
+cflags-y += $(WOLF_SSL_FLAGS) $(WOLF_WARNING_SUPPRESS)
 
 #
 # For the purposes of this command the current working directory is the makefile root (/fTPM) folder,

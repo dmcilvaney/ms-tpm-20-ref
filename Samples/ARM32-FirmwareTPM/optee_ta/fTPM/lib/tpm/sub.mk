@@ -10,7 +10,13 @@ FTPM_RELEASE = -DCOMPILER_CHECKS=NO -DRUNTIME_SIZE_CHECKS=NO -DLIBRARY_COMPATIBI
 
 FTPM_INCLUDES = -include ./reference/include/VendorString.h -include ./reference/include/Implementation.h
 
-cflags-y += $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(WARNING_SUPPRESS) $(FTPM_INCLUDES) -mno-unaligned-access
+#
+# The TPM causes a few warnings when compiled with GCC which are not critical.
+#
+
+FTPM_WARNING_SUPPRESS = -Wno-cast-align -Wno-switch-default -Wno-suggest-attribute=noreturn -Wno-missing-braces -Wno-sign-compare
+
+cflags-y += $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(FTPM_INCLUDES) $(FTPM_WARNING_SUPPRESS)
 
 ifeq ($(CFG_TA_DEBUG),y)
 cflags-y += $(FTPM_DEBUG)
