@@ -42,8 +42,6 @@
 #include <unistd.h>
 #include <ctype.h>
 
-typedef unsigned short int wchar_t;
-
 typedef unsigned long  clock_t;
 typedef long           time_t;
 

@@ -4,7 +4,6 @@ O := ../out/fTPM
 WOLF_ROOT := ../../../../external/wolfssl/
 TPM_ROOT := ../../../../
 
-CFLAGS += -fshort-wchar
 include $(TA_DEV_KIT_DIR)/mk/ta_dev_kit.mk
 
 clean: clean_stripped_file
