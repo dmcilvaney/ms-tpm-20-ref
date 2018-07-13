@@ -1,6 +1,6 @@
 BINARY=bc50d971-d4c9-42c4-82cb-343fb7f37896
 
-O := ../out/fTPM
+O ?= ../out/fTPM
 WOLF_ROOT := ../../../../external/wolfssl/
 TPM_ROOT := ../../../../
 
