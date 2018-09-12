@@ -32,20 +32,20 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-//** Introduction
+//** Description
+//
 // This file contains the routines that are used by the simulator to mimic
 // a hardware clock on a TPM.
-
+//
 // In this implementation, all the time values are measured in millisecond.
 // However, the precision of the clock functions may be implementation dependent.
 
 //** Includes and Data Definitions
 #include "PlatformData.h"
 #include "Platform_fp.h"
+#include "TpmFail_fp.h"
 #include <assert.h>
 #include <tee_internal_api.h>
-
 
 //** Simulator Functions
 //*** Introduction
@@ -100,7 +100,7 @@ _plat__TimerRestart(
 #include <time.h>
 TEE_Time     debugTime;
 
-//*** _plat__Time()
+//*** _plat__RealTime()
 // This is another, probably futile, attempt to define a portable function 
 // that will return a 64-bit clock value that has mSec resolution.
 uint64_t
@@ -131,13 +131,6 @@ _plat__RealTime(
     assert(Result == TEE_SUCCESS);
 
     Elapsed = ((Time.seconds * 1000) + (Time.millis));
-
-    #ifdef  DEBUGGING_TIME
-    // This allows TPM time to pass much faster than real time when debugging.
-    // A value of 1000 for DEBUG_TIME_MULTIPLER, for example, will make each
-    // millisecond a second.  A good starting value might be, say, 100.
-    Elapsed *= DEBUG_TIME_MULTIPLIER;
-#endif
 
     return Elapsed;
 }

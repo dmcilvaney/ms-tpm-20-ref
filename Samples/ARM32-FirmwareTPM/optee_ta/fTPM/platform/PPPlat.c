@@ -32,9 +32,9 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 //** Description
-//    This module simulates the physical present interface pins on the TPM.
+
+//    This module simulates the physical presence interface pins on the TPM.
 
 //** Includes
 #include "PlatformData.h"

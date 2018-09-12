@@ -32,7 +32,6 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 //** Description
 // This file will instance the TPM variables that are not stack allocated. The
 // descriptions for these variables are in Global.h for this project.
@@ -73,13 +72,7 @@ BOOL                 s_powerLost;
 uint32_t             lastEntropy;
 
 
-// From NVMem.c
-#ifdef  VTPM
-#   undef FILE_BACKED_NV
-#endif
-#ifdef FILE_BACKED_NV
-FILE                *s_NVFile = NULL;
-#endif
+// For NVMem.c
 unsigned char        s_NV[NV_MEMORY_SIZE];
 BOOL                 s_NvIsAvailable;
 BOOL                 s_NV_unrecoverable;

@@ -32,7 +32,6 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 //**Introduction
 // This module provides the platform specific entry and fail processing. The
 // _plat__RunCommand() function is used to call to ExecuteCommand() in the TPM code.
@@ -51,6 +50,7 @@
 #include "PlatformData.h"
 #include "Platform_fp.h"
 #include <setjmp.h>
+#include "ExecCommand_fp.h"
 
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
@@ -82,7 +82,9 @@ _plat__RunCommand(
 //***_plat__Fail()
 // This is the platform depended failure exit for the TPM.
 LIB_EXPORT NORETURN void
-_plat__Fail(void)
+_plat__Fail(
+    void
+    )
 {
     TEE_Panic(TEE_ERROR_BAD_STATE);
 }

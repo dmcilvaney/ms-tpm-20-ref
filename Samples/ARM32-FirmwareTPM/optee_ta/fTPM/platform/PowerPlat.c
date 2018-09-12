@@ -32,11 +32,11 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 //** Includes and Function Prototypes
 
 #include    "PlatformData.h"
 #include    "Platform_fp.h"
+#include    "_TPM_Init_fp.h"
 
 //** Functions
 

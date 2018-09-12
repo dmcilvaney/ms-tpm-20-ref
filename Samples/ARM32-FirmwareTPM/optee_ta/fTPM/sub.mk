@@ -16,7 +16,7 @@ cflags-y += -DNDEBUG
 endif
 
 #
-# Link the required external code into the libraries folder. OpTEE build
+# Link the required external code into the libraries folder. OP-TEE build
 # does not work well when accessing anything below the root directory. Use
 # symlinks to trick it.
 #

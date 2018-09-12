@@ -32,7 +32,6 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 //** Introduction
 // In some implementations of the TPM, the hardware can provide a secret
 // value to the TPM. This secret value is statistically unique to the

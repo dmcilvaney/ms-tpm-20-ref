@@ -32,6 +32,10 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+/*(Auto-generated)
+ *  Created by TpmPrototypes; Version 3.0 July 18, 2017
+ *  Date: Aug  7, 2018  Time: 03:39:35PM
+ */
 
 #ifndef    _PLATFORM_FP_H_
 #define    _PLATFORM_FP_H_
@@ -86,11 +90,13 @@ _plat__TimerRestart(
     void
     );
 
+//*** _plat__RealTime()
+// This is another, probably futile, attempt to define a portable function
+// that will return a 64-bit clock value that has mSec resolution.
 uint64_t
 _plat__RealTime(
     void
 );
-
 
 //***_plat__TimerRead()
 // This function provides access to the tick timer of the platform. The TPM code
@@ -105,8 +111,6 @@ _plat__RealTime(
 // allowed to go backwards. If the time provided by the system can go backwards
 // during a power discontinuity, then the _plat__Signal_PowerOn should call
 // _plat__TimerReset().
-//
-// The code in this function should be replaced by a read of a hardware tick timer.
 LIB_EXPORT uint64_t
 _plat__TimerRead(
     void
@@ -148,6 +152,10 @@ _plat__ClockAdjustRate(
 
 //** From Entropy.c 
 
+//** _plat__GetEntropy()
+// This function is used to get available hardware entropy. In a hardware
+// implementation of this function, there would be no call to the system
+// to get entropy.
 // return type: int32_t
 //  < 0        hardware failure of the entropy generator, this is sticky
 // >= 0        the returned amount of entropy (bytes)
@@ -186,7 +194,7 @@ _plat__LocalitySet(
 LIB_EXPORT void
 _plat__NvErrors(
     int              recoverable,
-    int            unrecoverable
+    int              unrecoverable
     );
 
 //***_plat__NVEnable()
@@ -284,7 +292,8 @@ _plat__NvMemoryMove(
     );
 
 //***_plat__NvCommit()
-// Update NV chip
+// This function writes the local copy of NV to NV for permanent store. It will write
+// NV_MEMORY_SIZE bytes to NV. If a file is use, the entire file is written.
 // return type: int
 //  0       NV write success
 //  non-0   NV write fail

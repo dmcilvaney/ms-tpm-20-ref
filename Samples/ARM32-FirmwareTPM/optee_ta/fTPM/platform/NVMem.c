@@ -32,9 +32,11 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+//** Description
 //
-// NV memory handling
+//    This file contains the NV read and write access methods.  This implementation
+//    uses RAM/file and does not manage the RAM/file as NV blocks.
+//    The implementation may become more sophisticated over time.
 //
 
 #include "TpmError.h"
@@ -442,10 +444,12 @@ _plat__NVEnable(
     return retVal;
 }
 
-//***_platNVDisable()
+//***_plat__NVDisable()
 // Disable NV memory
 LIB_EXPORT void
-_plat__NVDisable(void)
+_plat__NVDisable(
+    void
+    )
 {
 	UINT32 i;
 
@@ -477,10 +481,29 @@ _plat__NVDisable(void)
 //      1               NV is not available due to write failure
 //      2               NV is not available due to rate limit
 LIB_EXPORT int
-_plat__IsNvAvailable(void)
+_plat__IsNvAvailable(
+    void
+    )
 {
     // This is not enabled for OpTEE TA. Storage is always available.
     return 0;
+}
+
+
+
+//***_plat__NvMemoryRead()
+// Function: Read a chunk of NV memory
+LIB_EXPORT void
+_plat__NvMemoryRead(
+    unsigned int     startOffset,   // IN: read start
+    unsigned int     size,          // IN: size of bytes to read
+    void            *data           // OUT: data buffer
+    )
+{
+    pAssert((startOffset + size) <= NV_CHIP_MEMORY_SIZE);
+    pAssert(s_NV != NULL);
+
+    memcpy(data, &s_NV[startOffset], size);
 }
 
 //*** _plat__NvIsDifferent()
@@ -491,27 +514,12 @@ _plat__IsNvAvailable(void)
 //  FALSE(0)   the NV location is the same as the test value
 LIB_EXPORT int
 _plat__NvIsDifferent(
-    unsigned int         startOffset,         // IN: read start
-    unsigned int         size,                // IN: size of bytes to read
-    void                *data                 // IN: data buffer
-)
+    unsigned int     startOffset,   // IN: read start
+    unsigned int     size,          // IN: size of bytes to read
+    void            *data           // IN: data buffer
+    )
 {
     return (memcmp(&s_NV[startOffset], data, size) != 0);
-}
-
-//***_plat__NvMemoryRead()
-// Function: Read a chunk of NV memory
-LIB_EXPORT void
-_plat__NvMemoryRead(
-    unsigned int        startOffset,         // IN: read start
-    unsigned int        size,                // IN: size of bytes to read
-    void                *data                // OUT: data buffer
-)
-{
-    pAssert((startOffset + size) <= NV_CHIP_MEMORY_SIZE);
-    pAssert(s_NV != NULL);
-
-    memcpy(data, &s_NV[startOffset], size);
 }
 
 static
@@ -550,10 +558,10 @@ _plat__MarkDirtyBlocks (
 // only write those blocks when _plat__NvCommit() is called.
 LIB_EXPORT void
 _plat__NvMemoryWrite(
-    unsigned int        startOffset,         // IN: write start
-    unsigned int        size,                // IN: size of bytes to read
-    void                *data                // OUT: data buffer
-)
+    unsigned int     startOffset,   // IN: write start
+    unsigned int     size,          // IN: size of bytes to write
+    void            *data           // OUT: data buffer
+    )
 {
     pAssert(startOffset + size <= NV_CHIP_MEMORY_SIZE);
     pAssert(s_NV != NULL);
@@ -567,14 +575,14 @@ _plat__NvMemoryWrite(
 // value. The value represents the erase state of the memory.
 LIB_EXPORT void
 _plat__NvMemoryClear(
-    unsigned int     startOffset,           // IN: clear start
-    unsigned int     size                   // IN: size of bytes to clear
+    unsigned int     start,         // IN: clear start
+    unsigned int     size           // IN: number of bytes to clear
     )
 {
-    pAssert(startOffset + size <= NV_MEMORY_SIZE);
+    pAssert(start + size <= NV_MEMORY_SIZE);
 
-	_plat__MarkDirtyBlocks(startOffset, size);
-    memset(&s_NV[startOffset], 0, size);
+	_plat__MarkDirtyBlocks(start, size);
+    memset(&s_NV[start], 0, size);
 }
 
 //***_plat__NvMemoryMove()
@@ -583,10 +591,10 @@ _plat__NvMemoryClear(
 //      copied before it is written
 LIB_EXPORT void
 _plat__NvMemoryMove(
-    unsigned int        sourceOffset,         // IN: source offset
-    unsigned int        destOffset,           // IN: destination offset
-    unsigned int        size                  // IN: size of data being moved
-)
+    unsigned int     sourceOffset,  // IN: source offset
+    unsigned int     destOffset,    // IN: destination offset
+    unsigned int     size           // IN: size of data being moved
+    )
 {
     pAssert(sourceOffset + size <= NV_CHIP_MEMORY_SIZE);
     pAssert(destOffset + size <= NV_CHIP_MEMORY_SIZE);
@@ -599,23 +607,27 @@ _plat__NvMemoryMove(
 }
 
 //***_plat__NvCommit()
-// Update NV chip
+// This function writes the local copy of NV to NV for permanent store. It will write
+// NV_MEMORY_SIZE bytes to NV. If a file is use, the entire file is written.
 // return type: int
 //  0       NV write success
 //  non-0   NV write fail
 LIB_EXPORT int
-_plat__NvCommit(void)
+_plat__NvCommit(
+    void
+    )
 {
     _plat__NvWriteBack();
     return 0;
 }
 
-
 //***_plat__SetNvAvail()
 // Set the current NV state to available.  This function is for testing purpose
 // only.  It is not part of the platform NV logic
 LIB_EXPORT void
-_plat__SetNvAvail(void)
+_plat__SetNvAvail(
+    void
+    )
 {
     // NV will not be made unavailable on this platform
     return;
@@ -625,7 +637,9 @@ _plat__SetNvAvail(void)
 // Set the current NV state to unavailable.  This function is for testing purpose
 // only.  It is not part of the platform NV logic
 LIB_EXPORT void
-_plat__ClearNvAvail(void)
+_plat__ClearNvAvail(
+    void
+    )
 {
     // The anti-set; not on this platform.
     return;
