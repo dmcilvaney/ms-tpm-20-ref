@@ -38,13 +38,21 @@
 
 #include <Implementation.h>
 
-/* This UUID is generated with uuidgen */
+//
+// This UUID is generated with uuidgen
+//
 #define TA_FTPM_UUID { 0xBC50D971, 0xD4C9, 0x42C4, \
 	{0x82, 0xCB, 0x34, 0x3F, 0xB7, 0xF3, 0x78, 0x96}}
 
-/* The TAFs ID implemented in this TA */
-#define TA_FTPM_SUBMIT_COMMAND  (0)
-#define TA_FTPM_EMULATE_PPI     (1)
+//
+// The TAFs ID implemented in this TA
+//
+#define TA_FTPM_SUBMIT_COMMAND      (0)     // Submit TPM command
+#define TA_FTPM_EMULATE_PPI         (1)     // Emulate PPI command
+#define TA_FTPM_GET_VARIABLE        (2)     // Get authenticated variable
+#define TA_FTPM_GET_NEXT_VARIABLE   (3)     // Get next autheiticated variable
+#define TA_FTPM_SET_VARIABLE        (4)     // Set authenticated variable
+#define TA_FTPM_QUERY_VARINFO       (5)     // Query authenticated variable info
 
 //
 // These must match values from reference/TPM/include/Implementation.h

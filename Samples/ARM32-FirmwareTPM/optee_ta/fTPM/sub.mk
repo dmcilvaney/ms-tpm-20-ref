@@ -28,6 +28,7 @@ subdirs-y += lib
 global-incdirs-y += include
 global-incdirs-y += reference/include
 global-incdirs-y += platform/include
+global-incdirs-y += platform/authvar/include
 
 srcs-y += platform/AdminPPI.c
 srcs-y += platform/Cancel.c
@@ -43,5 +44,8 @@ srcs-y += platform/RunCommand.c
 srcs-y += platform/Unique.c
 srcs-y += platform/EPS.c
 srcs-y += reference/RuntimeSupport.c
+srcs-y += platform/authvar/varops.c
+srcs-y += platform/authvar/varmgmt.c
+srcs-y += platform/authvar/varauth.c
 
 srcs-y += fTPM.c

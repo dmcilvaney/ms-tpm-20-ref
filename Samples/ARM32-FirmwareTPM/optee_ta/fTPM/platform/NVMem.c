@@ -32,11 +32,9 @@
  *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-//** Description
+
 //
-//    This file contains the NV read and write access methods.  This implementation
-//    uses RAM/file and does not manage the RAM/file as NV blocks.
-//    The implementation may become more sophisticated over time.
+// NV memory handling
 //
 
 #include "TpmError.h"
@@ -50,9 +48,9 @@
 #include <tee_internal_api_extensions.h>
 
 //
-// Overall size of NV, not just the TPM's NV storage
+// Overall size of NV, not just the TPM's NV storage (128K!)
 //
-#define NV_CHIP_MEMORY_SIZE	(NV_MEMORY_SIZE + NV_TPM_STATE_SIZE)
+#define NV_CHIP_MEMORY_SIZE	(NV_MEMORY_SIZE + NV_TPM_STATE_SIZE + NV_AUTHVAR_SIZE)
 
 //
 // OpTEE still has an all or nothing approach to reads/writes. To provide
@@ -60,8 +58,12 @@
 //
 // Note that NV_CHIP_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.
 //
-#define NV_BLOCK_SIZE        0x200
+#define NV_BLOCK_SIZE       (0x200UL)
 #define NV_BLOCK_COUNT      ((NV_CHIP_MEMORY_SIZE) / (NV_BLOCK_SIZE))
+
+// Used to translate nv offset to block map offset
+#define NV_INDEX_MASK       (0xC0UL)
+#define NV_BLOCK_MASK       (0x3FUL)
 
 //
 // For cleaner descriptor validation
@@ -86,20 +88,23 @@ static const UINT32 s_StorageObjectID = 0x54504D00;	// 'TPM00'
 static TEE_ObjectHandle s_NVStore[NV_BLOCK_COUNT] = { TEE_HANDLE_NULL };
 
 //
-// Bitmap for NV blocks. Moving from UINT64 requires change to NV_DIRTY_ALL.
+// Bitmap for NV blocks
 //
-static UINT64 s_blockMap = 0x0ULL;
+#define BLOCKMAP_INDEX(x)   ((x) & (NV_INDEX_MASK) >> 6)
+#define BLOCKMAP_MASK(x)    ((x) & (NV_BLOCK_MASK))
+#define BLOCKMAP_MAXINDEX   (BLOCKMAP_INDEX(NV_BLOCK_COUNT) + 1)
+static UINT64 s_blockMap[BLOCKMAP_MAXINDEX] = { 0 };
+static bool s_dirty = TRUE;
 
 //
-// Shortcut for 'dirty'ing all NV blocks. Note the type.
+// Shortcut for 'dirty'ing all NV blocks.
 //
-#if NV_BLOCK_COUNT < 64
-#define NV_DIRTY_ALL	((UINT64)((0x1ULL << NV_BLOCK_COUNT) - 1))
-#elif NV_BLOCK_COUNT == 64
-#define NV_DIRTY_ALL    (~(0x0ULL))
-#else
-#error "NV block count exceeds 64 bit block map. Adjust block or NV size."
-#endif
+#define NV_DIRTY_ALL(x)                     \
+{                                           \
+s_dirty = TRUE;                             \
+for (int i = 0; i < BLOCKMAP_MAXINDEX; i++) \
+    x[i] = (~(0x0ULL));                     \
+}
 
 //
 // NV state
@@ -196,7 +201,7 @@ _plat__NvInitFromStorage()
 			s_NVChipFileNeedsManufacture = TRUE;
 
 			// To ensure NV is consistent, force a write back of all NV blocks
-			s_blockMap = NV_DIRTY_ALL;
+            NV_DIRTY_ALL(s_blockMap);
 
 			// Need to re-initialize
 			initialized = FALSE;
@@ -236,7 +241,7 @@ _plat__NvInitFromStorage()
 		memset(s_NV, 0, NV_CHIP_MEMORY_SIZE);
 
 		// Dirty the block map, we're going to re-init.
-		s_blockMap = NV_DIRTY_ALL;
+        NV_DIRTY_ALL(s_blockMap);
 
 		// Init with proper revision
 		s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
@@ -275,23 +280,28 @@ Error:
 static void
 _plat__NvWriteBack()
 {
-    UINT32 i;
+    UINT32 i, j, k;
 	UINT32 objID;
 	TEE_Result Result;
 
 	// Exit if no dirty blocks.
-	if ((!s_blockMap) || (!s_NVInitialized)) {
+	if ((!s_dirty) || (!s_NVInitialized)) {
 		return;
 	}
 
 #ifdef fTPMDebug
-	DMSG("bMap: 0x%x\n", s_blockMap);
+	DMSG("bMap[0]: 0x%x\n", s_blockMap[0]);
 #endif
 
 	// Write dirty blocks.
     for (i = 0; i < NV_BLOCK_COUNT; i++) {
 
-        if ((s_blockMap & (0x1ULL << i))) {
+        // BlockMap index/mask
+        j = BLOCKMAP_INDEX(i);
+        k = BLOCKMAP_MASK(i);
+
+        // Dirty block?
+        if ((s_blockMap[j] & (0x1ULL << k))) {
 
 			// Form storage object ID for this block.
 			objID = s_StorageObjectID + i;
@@ -324,7 +334,7 @@ _plat__NvWriteBack()
 			}
 
 			// Clear dirty bit.
-            s_blockMap &= ~(0x1ULL << i);
+            s_blockMap[j] &= ~(0x1ULL << k);
         }
     }
 
@@ -444,12 +454,10 @@ _plat__NVEnable(
     return retVal;
 }
 
-//***_plat__NVDisable()
+//***_platNVDisable()
 // Disable NV memory
 LIB_EXPORT void
-_plat__NVDisable(
-    void
-    )
+_plat__NVDisable(void)
 {
 	UINT32 i;
 
@@ -481,29 +489,10 @@ _plat__NVDisable(
 //      1               NV is not available due to write failure
 //      2               NV is not available due to rate limit
 LIB_EXPORT int
-_plat__IsNvAvailable(
-    void
-    )
+_plat__IsNvAvailable(void)
 {
     // This is not enabled for OpTEE TA. Storage is always available.
     return 0;
-}
-
-
-
-//***_plat__NvMemoryRead()
-// Function: Read a chunk of NV memory
-LIB_EXPORT void
-_plat__NvMemoryRead(
-    unsigned int     startOffset,   // IN: read start
-    unsigned int     size,          // IN: size of bytes to read
-    void            *data           // OUT: data buffer
-    )
-{
-    pAssert((startOffset + size) <= NV_CHIP_MEMORY_SIZE);
-    pAssert(s_NV != NULL);
-
-    memcpy(data, &s_NV[startOffset], size);
 }
 
 //*** _plat__NvIsDifferent()
@@ -514,12 +503,27 @@ _plat__NvMemoryRead(
 //  FALSE(0)   the NV location is the same as the test value
 LIB_EXPORT int
 _plat__NvIsDifferent(
-    unsigned int     startOffset,   // IN: read start
-    unsigned int     size,          // IN: size of bytes to read
-    void            *data           // IN: data buffer
-    )
+    unsigned int         startOffset,         // IN: read start
+    unsigned int         size,                // IN: size of bytes to read
+    void                *data                 // IN: data buffer
+)
 {
     return (memcmp(&s_NV[startOffset], data, size) != 0);
+}
+
+//***_plat__NvMemoryRead()
+// Function: Read a chunk of NV memory
+LIB_EXPORT void
+_plat__NvMemoryRead(
+    unsigned int        startOffset,         // IN: read start
+    unsigned int        size,                // IN: size of bytes to read
+    void                *data                // OUT: data buffer
+)
+{
+    pAssert((startOffset + size) <= NV_CHIP_MEMORY_SIZE);
+    pAssert(s_NV != NULL);
+
+    memcpy(data, &s_NV[startOffset], size);
 }
 
 static
@@ -531,7 +535,7 @@ _plat__MarkDirtyBlocks (
 {
 	unsigned int blockEnd;
 	unsigned int blockStart;	
-	unsigned int i;
+    unsigned int i, j, k;
 	
 	//
 	// Integer math will round down to the start of the block.
@@ -544,8 +548,15 @@ _plat__MarkDirtyBlocks (
 		blockEnd += 1;
 	}
 
+    // Dirty block range
 	for (i = blockStart; i < blockEnd; i++) {
-		s_blockMap |= (0x1ULL << i);
+
+        // BlockMap index/mask
+        j = BLOCKMAP_INDEX(i);
+        k = BLOCKMAP_MASK(i);
+
+        // Mark dirty
+		s_blockMap[j] |= (0x1ULL << k);
 	}
 }
 
@@ -558,10 +569,10 @@ _plat__MarkDirtyBlocks (
 // only write those blocks when _plat__NvCommit() is called.
 LIB_EXPORT void
 _plat__NvMemoryWrite(
-    unsigned int     startOffset,   // IN: write start
-    unsigned int     size,          // IN: size of bytes to write
-    void            *data           // OUT: data buffer
-    )
+    unsigned int        startOffset,         // IN: write start
+    unsigned int        size,                // IN: size of bytes to read
+    void                *data                // OUT: data buffer
+)
 {
     pAssert(startOffset + size <= NV_CHIP_MEMORY_SIZE);
     pAssert(s_NV != NULL);
@@ -575,14 +586,14 @@ _plat__NvMemoryWrite(
 // value. The value represents the erase state of the memory.
 LIB_EXPORT void
 _plat__NvMemoryClear(
-    unsigned int     start,         // IN: clear start
-    unsigned int     size           // IN: number of bytes to clear
+    unsigned int     startOffset,           // IN: clear start
+    unsigned int     size                   // IN: size of bytes to clear
     )
 {
-    pAssert(start + size <= NV_MEMORY_SIZE);
+    pAssert(startOffset + size <= NV_MEMORY_SIZE);
 
-	_plat__MarkDirtyBlocks(start, size);
-    memset(&s_NV[start], 0, size);
+	_plat__MarkDirtyBlocks(startOffset, size);
+    memset(&s_NV[startOffset], 0, size);
 }
 
 //***_plat__NvMemoryMove()
@@ -591,10 +602,10 @@ _plat__NvMemoryClear(
 //      copied before it is written
 LIB_EXPORT void
 _plat__NvMemoryMove(
-    unsigned int     sourceOffset,  // IN: source offset
-    unsigned int     destOffset,    // IN: destination offset
-    unsigned int     size           // IN: size of data being moved
-    )
+    unsigned int        sourceOffset,         // IN: source offset
+    unsigned int        destOffset,           // IN: destination offset
+    unsigned int        size                  // IN: size of data being moved
+)
 {
     pAssert(sourceOffset + size <= NV_CHIP_MEMORY_SIZE);
     pAssert(destOffset + size <= NV_CHIP_MEMORY_SIZE);
@@ -607,27 +618,23 @@ _plat__NvMemoryMove(
 }
 
 //***_plat__NvCommit()
-// This function writes the local copy of NV to NV for permanent store. It will write
-// NV_MEMORY_SIZE bytes to NV. If a file is use, the entire file is written.
+// Update NV chip
 // return type: int
 //  0       NV write success
 //  non-0   NV write fail
 LIB_EXPORT int
-_plat__NvCommit(
-    void
-    )
+_plat__NvCommit(void)
 {
     _plat__NvWriteBack();
     return 0;
 }
 
+
 //***_plat__SetNvAvail()
 // Set the current NV state to available.  This function is for testing purpose
 // only.  It is not part of the platform NV logic
 LIB_EXPORT void
-_plat__SetNvAvail(
-    void
-    )
+_plat__SetNvAvail(void)
 {
     // NV will not be made unavailable on this platform
     return;
@@ -637,10 +644,9 @@ _plat__SetNvAvail(
 // Set the current NV state to unavailable.  This function is for testing purpose
 // only.  It is not part of the platform NV logic
 LIB_EXPORT void
-_plat__ClearNvAvail(
-    void
-    )
+_plat__ClearNvAvail(void)
 {
     // The anti-set; not on this platform.
     return;
 }
+

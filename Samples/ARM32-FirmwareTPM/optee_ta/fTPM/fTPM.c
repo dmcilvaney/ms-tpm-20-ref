@@ -38,7 +38,7 @@
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
 #include <string.h>
-
+#include <varops.h>
 #include "fTPM.h"
 
 #define TA_ALL_PARAM_TYPE(type) TEE_PARAM_TYPES(type, type, type, type)
@@ -52,6 +52,11 @@ static bool fTPMSessionActive = false;
 // Initialization
 //
 bool fTPMInitialized = false;
+
+//
+// ExitBootServices called?
+//
+bool fTPMIsRuntime = false;
 
 //
 // Local (SW) command buffer
@@ -410,6 +415,165 @@ static TEE_Result fTPM_Emulate_PPI(uint32_t  param_types,
     return TEE_SUCCESS;
 }
 
+//
+// Get Authenticated Variable
+//
+static TEE_Result fTPM_AuthVar_Get(
+    uint32_t  ParamTypes,
+    TEE_Param Params[4]
+)
+{
+    VARIABLE_GET_PARAM  *GetParam;
+    VARIABLE_GET_RESULT *GetResult;
+    uint32_t    GetParamSize;
+    uint32_t    GetResultSize;
+    uint32_t    ExpectedTypes;
+    TEE_Result  Status;
+
+    ExpectedTypes = TEE_PARAM_TYPES(
+        TEE_PARAM_TYPE_MEMREF_INPUT,
+        TEE_PARAM_TYPE_MEMREF_OUTPUT,
+        TEE_PARAM_TYPE_VALUE_OUTPUT,
+        TEE_PARAM_TYPE_NONE);
+
+    // Validate parameter types
+    // TODO: Right now we're ignoring the output value (param[2]).
+    if (ParamTypes != ExpectedTypes) {
+        IMSG("fTPM_AuthVar_Get: bad param types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    // REVISIT: Validate parameters here or in GetVariable?
+    GetParam = (VARIABLE_GET_PARAM *)Params[0].memref.buffer;
+    GetParamSize = Params[0].memref.size;
+
+    GetResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
+    GetResultSize = Params[1].memref.size;
+
+    // Call VarOps
+    Status = GetVariable(GetParamSize, GetParam, GetResultSize, GetResult);
+    
+    return Status;
+}
+
+//
+// Get Next Authenticated Variable
+//
+static TEE_Result fTPM_AuthVar_GetNext(
+    uint32_t  ParamTypes,
+    TEE_Param Params[4]
+)
+{
+    VARIABLE_GET_NEXT_PARAM     *GetNextParam;
+    VARIABLE_GET_NEXT_RESULT    *GetNextResult;
+    uint32_t    GetNextParamSize;
+    uint32_t    GetNextResultSize;
+    uint32_t    ExpectedTypes;
+    TEE_Result  Status;
+
+    ExpectedTypes = TEE_PARAM_TYPES(
+        TEE_PARAM_TYPE_MEMREF_INPUT,
+        TEE_PARAM_TYPE_MEMREF_OUTPUT,
+        TEE_PARAM_TYPE_VALUE_OUTPUT,
+        TEE_PARAM_TYPE_NONE);
+
+    // Validate parameter types
+    // TODO: Right now we're ignoring the output value (param[2]).
+    if (ParamTypes != ExpectedTypes) {
+        IMSG("fTPM_AuthVar_Get: bad param types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    // REVISIT: Validate parameters here or in GetVariable?
+    GetNextParam = (VARIABLE_GET_NEXT_PARAM *)Params[0].memref.buffer;
+    GetNextParamSize = Params[0].memref.size;
+
+    GetNextResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
+    GetNextResultSize = Params[1].memref.size;
+
+    // Call VarOps
+    Status = GetNextVariableName(GetNextParamSize, GetNextParam, GetNextResultSize, GetNextResult);
+
+    return Status;
+}
+
+//
+// Set Authenticated Variable
+//
+static TEE_Result fTPM_AuthVar_Set(
+    uint32_t  ParamTypes,
+    TEE_Param Params[4]
+)
+{
+    VARIABLE_SET_PARAM  *SetParam;
+    uint32_t    SetParamSize;
+    uint32_t    ExpectedTypes;
+    TEE_Result  Status;
+
+    ExpectedTypes = TEE_PARAM_TYPES(
+        TEE_PARAM_TYPE_MEMREF_INPUT,
+        TEE_PARAM_TYPE_MEMREF_OUTPUT,   // <-- Not used for Set!
+        TEE_PARAM_TYPE_VALUE_OUTPUT,
+        TEE_PARAM_TYPE_NONE);
+
+    // Validate parameter types
+    // TODO: Right now we're ignoring the output value (param[2]).
+    if (ParamTypes != ExpectedTypes) {
+        IMSG("fTPM_AuthVar_Get: bad param types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    // REVISIT: Validate parameters here or in GetVariable?
+    SetParam = (VARIABLE_SET_PARAM *)Params[0].memref.buffer;
+    SetParamSize = Params[0].memref.size;
+
+    // Call VarOps
+    Status = SetVariable(SetParamSize, SetParam);
+
+    return Status;
+}
+
+//
+// Query Authenticated Variable Info
+//
+static TEE_Result fTPM_AuthVar_Query(
+    uint32_t  ParamTypes,
+    TEE_Param Params[4]
+)
+{
+    VARIABLE_QUERY_PARAM    *QueryParam;
+    VARIABLE_QUERY_RESULT   *QueryResult;
+    uint32_t    QueryParamSize;
+    uint32_t   *QueryResultSize;
+    uint32_t    ExpectedTypes;
+    TEE_Result  Status;
+
+    ExpectedTypes = TEE_PARAM_TYPES(
+        TEE_PARAM_TYPE_MEMREF_INPUT,
+        TEE_PARAM_TYPE_MEMREF_OUTPUT,
+        TEE_PARAM_TYPE_VALUE_OUTPUT,
+        TEE_PARAM_TYPE_NONE);
+
+    // Validate parameter types
+    // TODO: Right now we're ignoring the output value (param[2]).
+    if (ParamTypes != ExpectedTypes) {
+        IMSG("fTPM_AuthVar_Get: bad param types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    // REVISIT: Validate parameters here or in GetVariable?
+    QueryParam = (VARIABLE_GET_NEXT_PARAM *)Params[0].memref.buffer;
+    QueryParamSize = Params[0].memref.size;
+
+    QueryResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
+    QueryResultSize = &Params[1].memref.size;
+
+    // Call VarOps
+    Status = QueryVariableInfo(QueryParamSize, QueryParam, QueryResultSize, QueryResult);
+
+    return Status;
+}
+
 // 
 // Called when a TA is invoked. Note, paramters come from normal world.
 // 
@@ -430,6 +594,23 @@ TEE_Result TA_InvokeCommandEntryPoint(void      *sess_ctx,
 
         case TA_FTPM_EMULATE_PPI: {
             return fTPM_Emulate_PPI(param_types, params);
+        }
+
+        case TA_FTPM_GET_VARIABLE: {
+            return fTPM_AuthVar_Get(param_types, params);
+        }
+
+        case TA_FTPM_GET_NEXT_VARIABLE: {
+            return fTPM_AuthVar_GetNext(param_types, params);
+        }
+
+        case TA_FTPM_SET_VARIABLE: {
+            return fTPM_AuthVar_Set(param_types, params);
+        }
+
+        case TA_FTPM_QUERY_VARINFO: {
+            return fTPM_AuthVar_Query(param_types, params);
+
         }
 
         default: {

@@ -48,6 +48,7 @@
 #include "Implementation.h"
 #include "TpmSal.h"
 #include "TpmError.h"
+#include "varops.h"
 
 // Parameter reference and types from ref impl headers
 #ifndef UNREFERENCED_PARAMETER
