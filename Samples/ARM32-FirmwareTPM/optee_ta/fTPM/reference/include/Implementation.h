@@ -45,13 +45,12 @@
 #undef TRUE
 #undef FALSE
 
-#ifndef MAX
+#undef MAX
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
 
-#ifndef MIN
+#undef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
+
 // Table 2:3 - Definition of Base Types
 // Base Types are in BaseTypes.h
 
