@@ -35,6 +35,30 @@
 
 #include <Implementation.h>
 
+/**
+ * Implementation of tolower() commonly found in ctype.h
+ * Returns an ASCII character, changing to lowercase if the character is
+ * in the range 'A'-'Z'.
+ */
+
+int tolower (int c)
+{
+    if(c >= 'A' && c <= 'Z')
+    {
+        c -= ('A' - 'a');
+    }
+    return c;
+}
+
+int toupper (int c)
+{
+    if(c >= 'a' && c <= 'z')
+    {
+        c += ('A' - 'a');
+    }
+    return c;
+}
+
 int strncasecmp(const char *str1, const char *str2, size_t n)
 {
     size_t i = 0;
