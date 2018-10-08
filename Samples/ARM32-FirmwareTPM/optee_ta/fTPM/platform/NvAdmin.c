@@ -73,6 +73,7 @@ _admin__NvInitState()
     //
     s_stateSize[NV_TPM_STATE_FLAGS] = sizeof(TPM_CHIP_STATE);
     s_stateSize[NV_TPM_STATE_PPI] = sizeof(FTPM_PPI_STATE);
+    s_stateSize[NV_TPM_STATE_AUTHVAR] = sizeof(NV_AUTHVAR_STATE);
 
     //
     // Initialize TPM state data addresses. Stored after the main NV space.
@@ -100,6 +101,22 @@ void
 _admin__RestoreChipFlags()
 {
     _admin__NvReadState(NV_TPM_STATE_FLAGS, &g_chipFlags);
+}
+
+//***_admin__RestoreChipFlags()
+// Restore the g_chipFlags runtime state
+void
+_admin__SaveAuthVarState(NV_AUTHVAR_STATE *ptr)
+{
+    _admin__NvWriteState(NV_TPM_STATE_AUTHVAR, ptr);
+}
+
+//***_admin__RestoreChipFlags()
+// Restore the g_chipFlags runtime state
+void
+_admin__RestoreAuthVarState(NV_AUTHVAR_STATE *ptr)
+{
+    _admin__NvReadState(NV_TPM_STATE_AUTHVAR, ptr);
 }
 
 //***_admin__SavePPIState()

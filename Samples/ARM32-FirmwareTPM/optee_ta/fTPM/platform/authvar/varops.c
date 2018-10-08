@@ -459,6 +459,7 @@ SetVariable(
         {
             status = AppendVariable(
                 varPtr,
+                varType,
                 attrib,
                 &extAttrib,
                 data,
@@ -476,6 +477,7 @@ SetVariable(
         {
             status = ReplaceVariable(
                 varPtr,
+                varType,
                 attrib,
                 &extAttrib,
                 data,

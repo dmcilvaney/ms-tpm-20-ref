@@ -43,7 +43,8 @@
 //                        16K   (0x4000  bytes) - TPM NV storage
 //                        512   (0x200   bytes) - fTPM "Admin" state
 //          128K - (16K + 512)  (0x1BE00 bytes) - AuthVar storage
-#define NV_AUTHVAR_SIZE         (0x1BE00UL)
+#define NV_AUTHVAR_SIZE     (0x1BE00UL) // NV_AUTHVAR_SIZE
+#define NV_AUTHVAR_START    (0x4200UL)  // NV_CHIP_MEMORY_SIZE - NV_AUTHVAR_SIZE
 
 typedef union {
     BYTE  Flags;
@@ -61,8 +62,8 @@ typedef union {
 } ATTRIBUTES, *PATTRIBUTES;
 
 typedef struct _DATA_BLOB {
-    ULONG cbData;
-    UCHAR *pbData;
+    UINT32 DataSize;        // Size of data
+    BYTE Data[0];           // Data
 } DATA_BLOB, *PDATA_BLOB;
 
 // Extended attributes for authenticated variables
@@ -72,13 +73,6 @@ typedef struct _EXTENDED_ATTRIBUTES
     DATA_BLOB PublicKey;    // For non-SecureBoot variables
 } EXTENDED_ATTRIBUTES, *PEXTENDED_ATTRIBUTES;
 
-// "Header" for appended variable data
-typedef struct _NV_LINK
-{
-    UINT32 Size;            // Size of this appended data   
-    UINT32 Next;            // Offset to the next NV_LINK structure
-} NV_LINK, *PNV_LINK;       // Appended data always follows this struct
-
 // UEFI Variable Structure
 typedef struct _UEFI_VARIABLE
 {
@@ -86,15 +80,40 @@ typedef struct _UEFI_VARIABLE
     GUID VendorGuid;        // Associated GUID
     ATTRIBUTES Attributes;  // UEFI variable attributes
     USHORT NameSize;        // Length of var name
-    PWSTR Name;             // Offset/ptr to var name
-    UINT32 Size;            // Size of variable data
-    UINT32 AllocSize;       // NV Only: Allocated (i.e., maximum) size
-    UINT32 StartOffset;     // NV Only: Starting offset in NV
-    UINT32 Next;            // NV Only: Offset to NV_LINK'ed data (or zero)
-    PBYTE Data;             // Pointer to in-memory variable data
-    PEXTENDED_ATTRIBUTES ExtendedAttributes;    // Auth only
+    INT_PTR Name;           // Offset/ptr to var name
+    UINT32 AllocSize;       // Total size of this var entry
+    UINT32 ExtAttribSize;   // Size of extended attributes (auth only)
+    INT_PTR ExtAttrib;      // Offset/ptr to extended attributes (auth only)
+    UINT32 DataSize;        // Size of var data
+    INT_PTR Data;           // Offset/ptr to var data
+    INT_PTR Start;          // NV Only: Starting offset for variable in NV
+    INT_PTR End;            // NV Only: Ending offset for variable in NV
+    INT_PTR Next;           // NV Only: Offset to appended data (or zero)
 } UEFI_VARIABLE, *PUEFI_VARIABLE;
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
+
+// AuthVar state in fTPM Admin data
+typedef struct _AUTHVAR_STATE
+{
+    UINT32  NvEnd;          // Offset to first byte beyond AuthVar NV data
+} NV_AUTHVAR_STATE, *PNV_AUTHVAR_STATE;
+
+//// UEFI Variable Structure
+//typedef struct _UEFI_VARIABLE
+//{
+//    LIST_ENTRY List;        // Flink/Blink
+//    GUID VendorGuid;        // Associated GUID
+//    ATTRIBUTES Attributes;  // UEFI variable attributes
+//    USHORT NameSize;        // Length of var name
+//    PWSTR Name;             // Offset/ptr to var name
+//    UINT32 Size;            // Size of variable data
+//    UINT32 AllocSize;       // NV Only: Allocated (i.e., maximum) size
+//    UINT32 StartOffset;     // NV Only: Starting offset in NV
+//    UINT32 Next;            // NV Only: Offset to NV_LINK'ed data (or zero)
+//    PBYTE Data;             // Pointer to in-memory variable data
+//    PEXTENDED_ATTRIBUTES ExtendedAttributes;    // Auth only
+//} UEFI_VARIABLE, *PUEFI_VARIABLE;
+//typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
 
 
 // Struct for Get and GetNextVariable operations (REVISIT: Member ordering)
@@ -178,8 +197,8 @@ typedef struct _VSVARTYPEINFO
 {
     PCWSTR Name;                    // Var category name (storage area)
     CONST VARTYPE Type;             // Var type for this space
-    CONST UINT32 StartByte;         // Start of reservation
-    UINT32 ReservedBytes;           // Total bytes reserved for this space
+    CONST UINT32 StartByte;         // Start of reservation (TODO: REMOVE)
+    UINT32 RemainingBytes;          // Available storage
     LIST_ENTRY Head;                // Pointer to top of category list
     CONST BOOLEAN IsNonVolatile;    // Vars in this section are [non-]volatile
 } VTYPE_INFO;
