@@ -62,6 +62,7 @@ DeleteVariable(
 TEE_Result
 AppendVariable(
     PUEFI_VARIABLE          Var,
+    VARTYPE                 VarType,
     ATTRIBUTES              Attributes,
     PEXTENDED_ATTRIBUTES    ExtAttributes,
     PBYTE                   Data,
@@ -71,8 +72,9 @@ AppendVariable(
 TEE_Result
 ReplaceVariable(
     PUEFI_VARIABLE          Var,
+    VARTYPE                 VarType,
     ATTRIBUTES              Attributes,
-    PEXTENDED_ATTRIBUTES    ExtendedAttributes,
+    PEXTENDED_ATTRIBUTES    ExtAttributes,
     PBYTE                   Data,
     UINT32                  DataSize
 );

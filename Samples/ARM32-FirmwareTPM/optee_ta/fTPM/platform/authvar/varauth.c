@@ -154,6 +154,73 @@ AuthenticateSetVariable(
 
 --*/
 {
+    TEE_Result status = TEE_ERROR_ACCESS_DENIED;
+
+    // Guard against attempt to delete auth var with DataSize of 0
+    if (!DataSize && Var)
+    {
+        status = TEE_ERROR_ACCESS_DENIED;
+        goto Cleanup;
+    }
+
+    //ValidateParameters(Data, DataSize, ... );
+
+Cleanup:
+    // TODO: FIX THIS WHEN WE NEED TO
     *DuplicateFound = FALSE;
-    return TEE_SUCCESS;
+    return status;
+}
+
+static
+TEE_Result
+ValidateParameters(
+    PBYTE        Data,              // IN
+    UINT32       DataSize,          // IN
+    PBYTE       *SignedData,        // OUT
+    UINT32      *SignedDataSize,    // OUT
+    PBYTE       *ActualData,        // OUT
+    UINT32      *ActualDataSize,    // OUT
+    EFI_TIME    *EfiTime            // OUT
+)
+/*++
+
+    Routine Description:
+
+        Function to parse data parameter from UEFI SetVariable function.
+        It is parsed into the signed data field, timestamp, and content.
+
+    Arguments:
+
+        Data - Data parameter from the original SetVariable Function
+
+        DataSize - Size in bytes of Data
+
+        SignedData - Supplies the PKCS#7 Signed Data parsed from Data
+
+        SignedDataSize - Size in bytes of SignedData
+
+        ActualData - Content of the variable
+
+        ActualDataSize - Size in bytes of the variable
+
+        EfiTime - Timestamp parsed from Data
+
+    Returns:
+
+        TEE_Result
+
+--*/
+{
+    TEE_Result status;
+
+    // Guard against overflow
+    if ((UINT32)Data + DataSize <= (UINT32)Data)
+    {
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
+    }
+
+    status = TEE_SUCCESS;
+Cleanup:
+    return status;
 }

@@ -450,6 +450,8 @@ static TEE_Result fTPM_AuthVar_Get(
     GetResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
     GetResultSize = Params[1].memref.size;
 
+    // TODO: Check that we're init'ed first
+
     // Call VarOps
     Status = GetVariable(GetParamSize, GetParam, GetResultSize, GetResult);
     
@@ -491,6 +493,8 @@ static TEE_Result fTPM_AuthVar_GetNext(
     GetNextResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
     GetNextResultSize = Params[1].memref.size;
 
+    // TODO: Check that we're init'ed first
+
     // Call VarOps
     Status = GetNextVariableName(GetNextParamSize, GetNextParam, GetNextResultSize, GetNextResult);
 
@@ -527,6 +531,8 @@ static TEE_Result fTPM_AuthVar_Set(
     SetParam = (VARIABLE_SET_PARAM *)Params[0].memref.buffer;
     SetParamSize = Params[0].memref.size;
 
+    // TODO: Check that we're init'ed first
+    
     // Call VarOps
     Status = SetVariable(SetParamSize, SetParam);
 
@@ -568,6 +574,8 @@ static TEE_Result fTPM_AuthVar_Query(
     QueryResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
     QueryResultSize = &Params[1].memref.size;
 
+    // TODO: Check that we're init'ed first
+
     // Call VarOps
     Status = QueryVariableInfo(QueryParamSize, QueryParam, QueryResultSize, QueryResult);
 
@@ -578,9 +586,9 @@ static TEE_Result fTPM_AuthVar_Query(
 // Called when a TA is invoked. Note, paramters come from normal world.
 // 
 TEE_Result TA_InvokeCommandEntryPoint(void      *sess_ctx,
-                                      uint32_t  cmd_id,
-                                      uint32_t  param_types,
-                                      TEE_Param params[4])
+                                      uint32_t   cmd_id,
+                                      uint32_t   param_types,
+                                      TEE_Param  params[4])
 {
     // Unused parameter(s)
     UNREFERENCED_PARAMETER(sess_ctx);

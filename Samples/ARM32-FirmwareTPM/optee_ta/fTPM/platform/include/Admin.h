@@ -166,6 +166,7 @@ typedef struct {
 typedef enum {
     NV_TPM_STATE_FLAGS = 0,
     NV_TPM_STATE_PPI,
+    NV_TPM_STATE_AUTHVAR,
     NV_TPM_STATE_LAST           // A mark of the end of the TPM state
 } NV_TPM_STATE;
 

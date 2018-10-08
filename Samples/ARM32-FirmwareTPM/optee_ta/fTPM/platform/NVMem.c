@@ -50,6 +50,9 @@
 //
 // Overall size of NV, not just the TPM's NV storage (128K!)
 //
+// A change to this constant should be the result of a change to
+// implementation.h, Admin.h, and/or varops.h. A change to the size
+// of fTPM's NV memory needs to be consistent accross these headers.
 #define NV_CHIP_MEMORY_SIZE	(NV_MEMORY_SIZE + NV_TPM_STATE_SIZE + NV_AUTHVAR_SIZE)
 
 //
@@ -526,7 +529,6 @@ _plat__NvMemoryRead(
     memcpy(data, &s_NV[startOffset], size);
 }
 
-static
 void
 _plat__MarkDirtyBlocks (
 	unsigned int		startOffset,

@@ -33,6 +33,7 @@
 
 #pragma once
 #include <wchar.h>
+#include <stdint.h>
 
 #ifndef CONST
 #define CONST               const
@@ -58,14 +59,14 @@ typedef void VOID, *PVOID;
 // typedefs
 //
 typedef char                CHAR;
-typedef signed char         INT8;
+typedef int8_t              INT8;
 typedef unsigned char       UCHAR;
-typedef unsigned char       UINT8;
+typedef uint8_t             UINT8;
 typedef unsigned char       BYTE;
 typedef short               SHORT;
-typedef signed short        INT16;
+typedef int16_t             INT16;
 typedef unsigned short      USHORT;
-typedef unsigned short      UINT16;
+typedef uint16_t            UINT16;
 typedef unsigned short      WORD;
 typedef int                 INT;
 typedef signed int          INT32;
@@ -75,22 +76,20 @@ typedef long                LONG;
 typedef unsigned long       ULONG;
 typedef unsigned long       DWORD;
 typedef long long           LONGLONG;
-typedef long long           LONG64;
-typedef long long           RtlINT64;
 typedef unsigned long long  ULONGLONG;
 typedef unsigned long long  DWORDLONG;
 typedef unsigned long long  ULONG64;
 typedef unsigned long long  DWORD64;
-typedef unsigned long long  UINT64;
+typedef int64_t             INT64;
+typedef uint64_t            UINT64;
+
+typedef intptr_t    INT_PTR;
+typedef uintptr_t   UINT_PTR;
 
 #ifdef _WIN64
-typedef signed long long    INT_PTR;
-typedef unsigned long long  UINT_PTR;
 typedef signed long long    LONG_PTR;
 typedef unsigned long long  ULONG_PTR;
 #else
-typedef int                 INT_PTR;
-typedef unsigned int        UINT_PTR;
 typedef long                LONG_PTR;
 typedef unsigned long       ULONG_PTR;
 #endif // WIN64
@@ -99,10 +98,10 @@ typedef ULONG_PTR   DWORD_PTR;
 typedef LONG_PTR    SSIZE_T;
 typedef ULONG_PTR   SIZE_T;
 
-typedef BYTE               *PBYTE;
-typedef UINT32             *PUINT32;
-typedef UINT64             *PUINT64;
-typedef SIZE_T             *PSIZE_T;
+typedef BYTE        *PBYTE;
+typedef UINT32      *PUINT32;
+typedef UINT64      *PUINT64;
+typedef SIZE_T      *PSIZE_T;
 
  //
  // UNICODE (Wide Character) types
@@ -199,6 +198,16 @@ typedef struct _GUID {
     unsigned short Data3;
     unsigned char  Data4[8];
 } GUID;
+
+extern const GUID GUID_NULL;
+
+#ifndef MIN
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#endif
+
+#ifndef MAX
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#endif
 
 #ifndef __LPGUID_DEFINED__
 #define __LPGUID_DEFINED__
