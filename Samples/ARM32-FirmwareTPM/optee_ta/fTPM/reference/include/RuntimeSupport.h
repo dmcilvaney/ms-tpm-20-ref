@@ -42,8 +42,7 @@
 #include <unistd.h>
 #include <ctype.h>
 
-typedef unsigned long  clock_t;
-typedef long           time_t;
+typedef uint64_t clock_t;
 
 #ifndef XMEMCPY
 #define XMEMCPY(pdest, psrc, size) memcpy((pdest), (psrc), (size))
