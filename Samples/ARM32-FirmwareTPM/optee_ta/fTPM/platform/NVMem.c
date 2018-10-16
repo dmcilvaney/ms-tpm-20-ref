@@ -164,6 +164,8 @@ _plat__NvInitFromStorage()
 		// Form storage object ID for this block.
 		objID = s_StorageObjectID + i;
 
+		DMSG("fTPM:Opening memory block %d of %d", i, NV_BLOCK_COUNT);
+
 		// Attempt to open TEE persistent storage object.
 		Result = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE,
 									      (void *)&objID,
@@ -177,10 +179,12 @@ _plat__NvInitFromStorage()
 			// There was an error, fail the init, NVEnable can retry.
 			if (Result != TEE_ERROR_ITEM_NOT_FOUND) {
 #ifdef fTPMDebug
-				DMSG("Failed to open fTPM storage object");
+				DMSG("fTPM: Failed to open fTPM storage object %d", i);
 #endif
 				goto Error;
 			}
+
+			DMSG("fTPM: block %d not found, creating", i);
 
 			// Storage object was not found, create it.
 			Result = TEE_CreatePersistentObject(TEE_STORAGE_PRIVATE,
@@ -215,6 +219,7 @@ _plat__NvInitFromStorage()
 #endif
 		}
 		else {
+			DMSG("fTPM: block %d loaded!", i);
 			// Successful open, now read fTPM storage object.
 			Result = TEE_ReadObjectData(s_NVStore[i],
 										(void *)&(s_NV[i * NV_BLOCK_SIZE]),
@@ -312,6 +317,7 @@ _plat__NvWriteBack()
 			// Move data position associated with handle to start of block.
             Result = TEE_SeekObjectData(s_NVStore[i], 0, TEE_DATA_SEEK_SET);
 			if (Result != TEE_SUCCESS) {
+				DMSG("e");
 				goto Error;
 			}
 
@@ -320,6 +326,7 @@ _plat__NvWriteBack()
 									     (void *)&(s_NV[i * NV_BLOCK_SIZE]),
                                          NV_BLOCK_SIZE);
 			if (Result != TEE_SUCCESS) {
+				DMSG("e");
 				goto Error;
 			}
             
@@ -333,6 +340,7 @@ _plat__NvWriteBack()
                                               &s_NVStore[i]);
 			// Success?
 			if (Result != TEE_SUCCESS) {
+				DMSG("e");
 				goto Error;
 			}
 
@@ -340,6 +348,8 @@ _plat__NvWriteBack()
             s_blockMap[j] &= ~(0x1ULL << k);
         }
     }
+
+	DMSG("Done writeback");
 
     return;
 
@@ -364,6 +374,8 @@ _plat__NVInitAuthVar(
     bool authvarClear
 )
 {
+	DMSG("Init authvar");
+
 	if(authvarClear) {
 		NV_AUTHVAR_STATE authVarState;
 		authVarState.NvEnd = (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE);

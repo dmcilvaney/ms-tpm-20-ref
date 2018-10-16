@@ -217,6 +217,8 @@ AuthVars:
     // Initialization complete
     fTPMInitialized = true;
 
+    DMSG("Done init!");
+
     return TEE_SUCCESS;
 }
 
@@ -243,6 +245,7 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t    param_types,
                                     void        **sess_ctx)
 {
     uint32_t exp_param_types = TA_ALL_PARAM_TYPE(TEE_PARAM_TYPE_NONE);
+    DMSG("Open session");
 
     // Unreferenced parameters
     UNREFERENCED_PARAMETER(params);
@@ -294,6 +297,8 @@ static TEE_Result fTPM_Submit_Command(uint32_t  param_types,
                                                TEE_PARAM_TYPE_NONE,
                                                TEE_PARAM_TYPE_NONE);
 
+    DMSG("submit");   
+
     // Validate parameter types
     if (param_types != exp_param_types) {
 #ifdef fTPMDebug
@@ -312,7 +317,7 @@ static TEE_Result fTPM_Submit_Command(uint32_t  param_types,
 #endif
         return TEE_ERROR_BAD_PARAMETERS;
     }
-
+DMSG("submit");  
     // Copy command locally
     memcpy(fTPMCommand, params[0].memref.buffer, params[0].memref.size);
 
@@ -320,21 +325,21 @@ static TEE_Result fTPM_Submit_Command(uint32_t  param_types,
     // field descibes the buffer containing the command, not the command.
     cmdBuf = fTPMCommand;
     cmdLen = BYTE_ARRAY_TO_UINT32((uint8_t *)&(cmdBuf[2]));
-
+DMSG("submit");  
     // Sanity check cmd length included in TPM command
     if (cmdLen > params[0].memref.size) {
         return TEE_ERROR_BAD_PARAMETERS;
     }
-
+DMSG("submit");  
     respBuf = (uint8_t *)(params[1].memref.buffer);
     respLen = params[1].memref.size;
-
+DMSG("submit");  
     // Check if this is a PPI Command
     if (!_admin__PPICommand(cmdLen, cmdBuf, &respLen, &respBuf)) {
         // If not, pass through to TPM
         ExecuteCommand(cmdLen, cmdBuf, &respLen, &respBuf);
     }
-
+DMSG("submit");  
     // Unfortunately, this cannot be done until after we have our response in
     // hand. We will, however, make an effort to return at least a portion of
     // the response along with TEE_ERROR_SHORT_BUFFER.
@@ -345,7 +350,7 @@ static TEE_Result fTPM_Submit_Command(uint32_t  param_types,
 #endif
         return TEE_ERROR_SHORT_BUFFER;
     }
-
+DMSG("submit");  
 #ifdef fTPMDebug
     DMSG("Success, RS: 0x%x\n", respLen);
 #endif
@@ -433,6 +438,8 @@ static TEE_Result fTPM_AuthVar_Get(
     uint32_t    ExpectedTypes;
     TEE_Result  Status;
 
+    DMSG("AV cmd");
+
     ExpectedTypes = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,
         TEE_PARAM_TYPE_MEMREF_OUTPUT,
@@ -441,10 +448,13 @@ static TEE_Result fTPM_AuthVar_Get(
 
     // Validate parameter types
     // TODO: Right now we're ignoring the output value (param[2]).
+    DMSG("AV cmd");
     if (ParamTypes != ExpectedTypes) {
         IMSG("fTPM_AuthVar_Get: bad param types");
         return TEE_ERROR_BAD_PARAMETERS;
     }
+
+    DMSG("AV cmd");
 
     // REVISIT: Validate parameters here or in GetVariable?
     GetParam = (VARIABLE_GET_PARAM *)Params[0].memref.buffer;
@@ -456,8 +466,9 @@ static TEE_Result fTPM_AuthVar_Get(
     // TODO: Check that we're init'ed first
 
     // Call VarOps
-    Status = GetVariable(GetParamSize, GetParam, GetResultSize, GetResult);
-    
+    DMSG("AV cmd");
+    Status = GetVariable(GetParamSize, GetParam, &GetResultSize, GetResult);
+
     return Status;
 }
 
@@ -475,6 +486,8 @@ static TEE_Result fTPM_AuthVar_GetNext(
     uint32_t    GetNextResultSize;
     uint32_t    ExpectedTypes;
     TEE_Result  Status;
+
+    DMSG("AV cmd");
 
     ExpectedTypes = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,
@@ -517,6 +530,8 @@ static TEE_Result fTPM_AuthVar_Set(
     uint32_t    ExpectedTypes;
     TEE_Result  Status;
 
+    DMSG("AV cmd");
+
     ExpectedTypes = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,
         TEE_PARAM_TYPE_MEMREF_OUTPUT,   // <-- Not used for Set!
@@ -556,6 +571,8 @@ static TEE_Result fTPM_AuthVar_Query(
     uint32_t   *QueryResultSize;
     uint32_t    ExpectedTypes;
     TEE_Result  Status;
+
+    DMSG("AV cmd");
 
     ExpectedTypes = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,

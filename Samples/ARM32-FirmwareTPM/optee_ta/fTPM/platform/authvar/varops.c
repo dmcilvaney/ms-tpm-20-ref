@@ -79,9 +79,12 @@ GetVariable(
     UNICODE_STRING unicodeName;
     TEE_Result status = TEE_SUCCESS;
 
+    DMSG("get");
+
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
     {
+        DMSG("get");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -89,6 +92,7 @@ GetVariable(
     // Request validation
     if (!(GetReultSize) || (GetParam->Size != sizeof(VARIABLE_GET_PARAM)))
     {
+        DMSG("get");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -96,6 +100,9 @@ GetVariable(
     // Size of result buffer
     if (*GetReultSize < sizeof(VARIABLE_GET_RESULT))
     {
+        DMSG("get");
+        DMSG("value is %d, we need at least %d", *GetReultSize, sizeof(VARIABLE_GET_RESULT));
+        DMSG("Caller has requested %d",GetResult->Size);
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
@@ -103,6 +110,9 @@ GetVariable(
     // Validation of var name size
     if ((GetParam->NameSize) <= 0)// || (GetParam->NameSize % sizeof(WCHAR)))
     {
+        DMSG("get");
+        DMSG("name size %d", (uint32_t)GetParam->NameSize);
+        DMSG("Need to be multiple of %d",  sizeof(WCHAR));
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }

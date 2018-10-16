@@ -180,9 +180,13 @@ AuthVarInitStorage(
     // be set appropriately when added to the in-memory list(s).
 
     // Get our Admin state and sanity check ending offset
+    DMSG("var");
     _admin__RestoreAuthVarState(&authVarState);
+    DMSG("var");
+    DMSG("nextFree/NvEnd:%x, size:%x", authVarState.NvEnd, NV_AUTHVAR_SIZE);
     if (!((s_nextFree = authVarState.NvEnd) < NV_AUTHVAR_SIZE))
     {
+        DMSG("Sanity check failed");
         return 0;
     }
 
@@ -243,7 +247,7 @@ AuthVarInitStorage(
 
         // Compute pointer to next var
         pVar = (PUEFI_VARIABLE)((INT_PTR)pVar + pVar->AllocSize);
-
+        DMSG("Doing %x is less than %x",((INT_PTR)pVar - (INT_PTR)NvPtr),s_nextFree);
     } while (((INT_PTR)pVar - (INT_PTR)NvPtr) < s_nextFree);
 
     return 1;
@@ -281,9 +285,12 @@ SearchList(
 {
     UINT32 i;
 
+    DMSG("Search list");
+
     // Validate parameters
     if (!(UnicodeName) || !(VendorGuid) || !(Var) || !(VarType))
     {
+        DMSG("search parameter failed!");
         return;
     }
 
@@ -294,9 +301,12 @@ SearchList(
     {
         PLIST_ENTRY head = &VarInfo[i].Head;
         PLIST_ENTRY cur = head->Flink;
+        DMSG("Seraching type %d", i);
+        DMSG("Head:%x, cur:%x", head, cur);
 
         while ((cur) && (cur != head))
         {
+            DMSG("Comparing");
             if (CompareEntries(UnicodeName, VendorGuid, (PUEFI_VARIABLE)cur))
             {
                 *Var = (PUEFI_VARIABLE)cur;
