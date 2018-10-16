@@ -77,7 +77,7 @@ typedef void *          PVOID;
 #endif
 
 // Admin space tacked on to NV, padded out to NV_BLOCK_SIZE alignment.
-#define NV_TPM_STATE_SIZE   0x200
+#define NV_TPM_STATE_SIZE   0x1000
 
 // Actual size of Admin space used. (See note in NVMem.c)
 #define TPM_STATE_SIZE      0x10

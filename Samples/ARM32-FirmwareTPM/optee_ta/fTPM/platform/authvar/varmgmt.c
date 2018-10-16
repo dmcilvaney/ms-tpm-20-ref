@@ -186,8 +186,15 @@ AuthVarInitStorage(
         return 0;
     }
 
-    do {
+    if (s_nextFree == StartingOffset) {
+        DMSG("First run, we are fine");
+        NV_AUTHVAR_STATE authVarState;
+		authVarState.NvEnd = s_nextFree;
+		_admin__SaveAuthVarState(&authVarState);
+        return 1;
+    }
 
+    do {
         // Init before gettype
         guid = (PCGUID)&(pVar->VendorGuid);
         name = (PCWSTR)((pVar->Name) + (INT_PTR)pVar);
@@ -238,6 +245,8 @@ AuthVarInitStorage(
         pVar = (PUEFI_VARIABLE)((INT_PTR)pVar + pVar->AllocSize);
 
     } while (((INT_PTR)pVar - (INT_PTR)NvPtr) < s_nextFree);
+
+    return 1;
 }
 
 VOID
@@ -277,6 +286,8 @@ SearchList(
     {
         return;
     }
+
+    *Var = NULL;
 
     // Run the list(s)
     for (i = 0; i < ARRAY_SIZE(VarInfo); i++)
@@ -487,6 +498,10 @@ CreateVariable(
 
         // Update offset to next free byte
         s_nextFree += totalNv;
+
+        NV_AUTHVAR_STATE authVarState;
+		authVarState.NvEnd = s_nextFree;
+		_admin__SaveAuthVarState(&authVarState);
 
         // Update the in-memory list
         InsertTailList(&VarInfo[varType].Head, &newVar->List);

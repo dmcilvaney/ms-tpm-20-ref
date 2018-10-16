@@ -41,10 +41,10 @@
 // Total allocation of the fTPM TA's storage for Authenticated Variables
 //      fTPM TA storage (128K total):
 //                        16K   (0x4000  bytes) - TPM NV storage
-//                        512   (0x200   bytes) - fTPM "Admin" state
+//                        512   (0x1000   bytes) - fTPM "Admin" state
 //          128K - (16K + 512)  (0x1BE00 bytes) - AuthVar storage
-#define NV_AUTHVAR_SIZE     (0x1BE00UL) // NV_AUTHVAR_SIZE
-#define NV_AUTHVAR_START    (0x4200UL)  // NV_CHIP_MEMORY_SIZE - NV_AUTHVAR_SIZE
+#define NV_AUTHVAR_SIZE     (0x20000UL - (0x4000 + 0x1000)) // NV_AUTHVAR_SIZE
+#define NV_AUTHVAR_START    (0x5000UL)  // NV_CHIP_MEMORY_SIZE - NV_AUTHVAR_SIZE
 
 typedef union {
     BYTE  Flags;

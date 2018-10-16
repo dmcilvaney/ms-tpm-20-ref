@@ -125,6 +125,8 @@ TEE_Result TA_CreateEntryPoint(void)
     uint32_t respLen;
     uint8_t *respBuf;
 
+    bool authvarClear = false;
+
 #ifdef fTPMDebug
     DMSG("Entry Point\n");
 #endif
@@ -158,6 +160,7 @@ TEE_Result TA_CreateEntryPoint(void)
         DMSG("TPM_Manufacture\n");
 #endif
         TPM_Manufacture(1);
+        authvarClear = true;
     }
 
     // "Power-On" the platform
@@ -207,7 +210,7 @@ AuthVars:
     _admin__SaveChipFlags();
 
     // TPM Init is done, now do AuthVars
-    if (_plat__NVInitAuthVar() == 0) {
+    if (_plat__NVInitAuthVar(authvarClear) == 0) {
         TEE_Panic(TEE_ERROR_BAD_STATE);
     }
 

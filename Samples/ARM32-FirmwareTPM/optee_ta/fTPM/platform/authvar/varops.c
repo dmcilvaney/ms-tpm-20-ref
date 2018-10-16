@@ -94,25 +94,28 @@ GetVariable(
     }
 
     // Size of result buffer
-    if (*GetReultSize < sizeof(VARIABLE_QUERY_RESULT))
+    if (*GetReultSize < sizeof(VARIABLE_GET_RESULT))
     {
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
 
     // Validation of var name size
-    if (!(GetParam->NameSize) || (GetParam->NameSize % sizeof(WCHAR)))
+    if ((GetParam->NameSize) <= 0)// || (GetParam->NameSize % sizeof(WCHAR)))
     {
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
 
+    //TODO: What is this test checking?
+
     // Guard against overflow with name string
     if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) ||
         (GetParam < (sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
-        status = TEE_ERROR_BAD_PARAMETERS;
-        goto Cleanup;
+        DMSG("get");
+        //status = TEE_ERROR_BAD_PARAMETERS;
+        //goto Cleanup;
     }
 
     // Retreive (name, guid)
@@ -139,6 +142,8 @@ GetVariable(
     // Yes, go get it.
     RetrieveVariable(varPtr, GetResult, GetReultSize, NULL);
     status = TEE_SUCCESS;
+
+    DMSG("Done get");
 
 Cleanup:
     return status;
@@ -334,11 +339,14 @@ SetVariable(
     ATTRIBUTES attrib;
     BOOLEAN duplicateFound;
 
+    DMSG("set");
+
     // Validate parameters
     if (!(SetParam)
         || (SetParamSize < sizeof(VARIABLE_SET_PARAM))
         || (SetParam->Size != sizeof(VARIABLE_SET_PARAM)))
     {
+        DMSG("set");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -355,18 +363,21 @@ SetVariable(
         || (SetParam->OffsetName + varNameSize > offsetLimit)
         || (SetParam->OffsetData + dataSize > offsetLimit))
     {
+        DMSG("set");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // We expect the name of the variable before the data (if provided)
     if ((SetParam->DataSize) && (SetParam->OffsetName > SetParam->OffsetData))
     {
+        DMSG("set");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // Alignment check on variable name offset
     if (SetParam->OffsetName % sizeof(WCHAR))
     {
+        DMSG("set");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -384,16 +395,19 @@ SetVariable(
     // Attribute validation
     if ((attrib.Flags & (~EFI_KNOWN_ATTRIBUTES)) != 0)
     {
+        DMSG("set");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite && attrib.TimeBasedAuth)
     {
+        DMSG("set");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite || attrib.HwErrorRec)
     {
+        DMSG("set");
         return TEE_ERROR_NOT_IMPLEMENTED;
     }
 
@@ -403,12 +417,16 @@ SetVariable(
     // Does the variable exist already?
     SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
 
+    DMSG("varPtr: 0x%x, flags: 0x%x", varPtr, attrib.Flags);
+
     // Yes
     if (varPtr != NULL)
     {
         // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE
         if (((attrib.Flags) ^ (varPtr->Attributes.Flags)) & ~(EFI_VARIABLE_APPEND_WRITE))
         {
+            DMSG("set");
+            DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%x", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
             return TEE_ERROR_BAD_PARAMETERS;
         }
 
@@ -417,6 +435,7 @@ SetVariable(
             // ..only non-volatile variables with runtime access can be set
             !((varPtr->Attributes.RuntimeAccess) & (varPtr->Attributes.NonVolatile)))
         {
+            DMSG("set");
             return TEE_ERROR_ACCESS_DENIED;
         }
 
@@ -437,6 +456,7 @@ SetVariable(
 
             if (status != TEE_SUCCESS)
             {
+                DMSG("set");
                 goto Cleanup;
             }
 
@@ -450,6 +470,7 @@ SetVariable(
         if (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES) ||
             (dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES))
         {
+            DMSG("set");
             status = DeleteVariable(varPtr, varType, attrib);
             goto Cleanup;
         }
@@ -457,6 +478,7 @@ SetVariable(
         // Is this an append operation?
         if (attrib.AppendWrite)
         {
+            DMSG("set");
             status = AppendVariable(
                 varPtr,
                 varType,
@@ -475,6 +497,7 @@ SetVariable(
         if ((!(fTPMIsRuntime) && (attrib.BootService)) ||
             ((fTPMIsRuntime) && (attrib.RuntimeAccess) && (attrib.NonVolatile)))
         {
+            DMSG("set");
             status = ReplaceVariable(
                 varPtr,
                 varType,
@@ -487,6 +510,7 @@ SetVariable(
 
         // If this case is not covered then one or more parameters are invalid.
         status = TEE_ERROR_BAD_PARAMETERS;
+        DMSG("set");
         goto Cleanup;
     }
 
@@ -494,6 +518,7 @@ SetVariable(
     if ((dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES))
     {
         status = TEE_ERROR_ITEM_NOT_FOUND;
+        DMSG("set");
         goto Cleanup;
     }
 
@@ -501,6 +526,7 @@ SetVariable(
     // invalid. However, caller is responsible for following BS-implies-RT rule.
     if ((attrib.NonVolatile) && (attrib.BootService))
     {
+        DMSG("set");
         if (attrib.TimeBasedAuth)
         {
             status = AuthenticateSetVariable(
@@ -517,6 +543,7 @@ SetVariable(
 
             if (status != TEE_SUCCESS)
             {
+                DMSG("set");
                 goto Cleanup;
             }
 
@@ -531,12 +558,14 @@ SetVariable(
             &extAttrib,
             dataSize,
             data);
+        DMSG("set");
         goto Cleanup;
     }
 
     // Cannot create new volatile variables at runtime
     if (!(attrib.NonVolatile) && !(fTPMIsRuntime) && (attrib.BootService))
     {
+        DMSG("set");
         // REVISIT: Implement volatile authenticated variables only if needed.
         if (attrib.TimeBasedAuth)
         {
@@ -551,9 +580,10 @@ SetVariable(
             &extAttrib,
             dataSize,
             data);
+        DMSG("set");
         goto Cleanup;
     }
-
+    DMSG("set");
     // If this case is not covered then one or more parameters are invalid.
     status = TEE_ERROR_BAD_PARAMETERS;
     goto Cleanup;
@@ -564,7 +594,7 @@ Cleanup:
     {
         TEE_Free(content);
     }
-
+    DMSG("set done");
     return status;
 }
 

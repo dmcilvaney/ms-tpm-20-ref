@@ -61,7 +61,7 @@
 //
 // Note that NV_CHIP_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.
 //
-#define NV_BLOCK_SIZE       (0x200UL)
+#define NV_BLOCK_SIZE       (0x1000UL)
 #define NV_BLOCK_COUNT      ((NV_CHIP_MEMORY_SIZE) / (NV_BLOCK_SIZE))
 
 // Used to translate nv offset to block map offset
@@ -132,7 +132,7 @@ static UINT64 s_chipRevision = 0;
 // state. The Admin space in NV is down to ~16 bytes but is padded out to
 // 256bytes to avoid alignment issues and allow for growth.
 //
-#define NV_CHIP_REVISION_OFFSET ((NV_MEMORY_SIZE) + (TPM_STATE_SIZE))
+#define NV_CHIP_REVISION_OFFSET ((NV_MEMORY_SIZE) + (TPM_STATE_SIZE) - 8)
 
 VOID
 _plat__NvInitFromStorage()
@@ -361,9 +361,15 @@ Error:
 
 LIB_EXPORT int
 _plat__NVInitAuthVar(
-    void
+    bool authvarClear
 )
 {
+	if(authvarClear) {
+		NV_AUTHVAR_STATE authVarState;
+		authVarState.NvEnd = (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE);
+		_admin__SaveAuthVarState(&authVarState);
+	}
+
     return(AuthVarInitStorage((NV_MEMORY_SIZE + NV_TPM_STATE_SIZE), s_NV));
 }
 
