@@ -44,11 +44,6 @@
 #define TA_ALL_PARAM_TYPE(type) TEE_PARAM_TYPES(type, type, type, type)
 
 //
-// Ensure we have only one active session
-//
-static bool fTPMSessionActive = false;
-
-//
 // Initialization
 //
 bool fTPMInitialized = false;
@@ -184,7 +179,7 @@ TEE_Result TA_CreateEntryPoint(void)
 
         ExecuteCommand(STARTUP_SIZE, startupState, &respLen, &respBuf);
         if (fTPMResponseCode(respLen, respBuf) == TPM_RC_SUCCESS) {
-            goto Exit;
+            goto AuthVars;
         }
 
 #ifdef fTPMDebug
@@ -206,10 +201,15 @@ Clear:
     // Fall back to a Startup Clear
     ExecuteCommand(STARTUP_SIZE, startupClear, &respLen, &respBuf);
 
-Exit:
+AuthVars:
     // Init is complete, indicate so in fTPM admin state.
     g_chipFlags.fields.TpmStatePresent = 1;
     _admin__SaveChipFlags();
+
+    // TPM Init is done, now do AuthVars
+    if (_plat__NVInitAuthVar() == 0) {
+        TEE_Panic(TEE_ERROR_BAD_STATE);
+    }
 
     // Initialization complete
     fTPMInitialized = true;
@@ -250,13 +250,13 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t    param_types,
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    // Only one active session to the fTPM is permitted
-    if (fTPMSessionActive) {
-        return TEE_ERROR_ACCESS_CONFLICT;
-    }
-
-    // Active session
-    fTPMSessionActive = true;
+//    // Only one active session to the fTPM is permitted
+//    if (fTPMSessionActive) {
+//        return TEE_ERROR_ACCESS_CONFLICT;
+//    }
+//
+//    // Active session
+//    fTPMSessionActive = true;
 
     // If return value != TEE_SUCCESS the session will not be created.
     return TEE_SUCCESS;
@@ -272,9 +272,9 @@ void TA_CloseSessionEntryPoint(void *sess_ctx)
     UNREFERENCED_PARAMETER(sess_ctx);
 
     // Clear active session
-    if (fTPMSessionActive) {
-        fTPMSessionActive = false;
-    }
+//    if (fTPMSessionActive) {
+//        fTPMSessionActive = false;
+//    }
 }
 
 //
@@ -590,6 +590,8 @@ TEE_Result TA_InvokeCommandEntryPoint(void      *sess_ctx,
                                       uint32_t   param_types,
                                       TEE_Param  params[4])
 {
+    TEE_Result Status;
+
     // Unused parameter(s)
     UNREFERENCED_PARAMETER(sess_ctx);
 
@@ -597,28 +599,39 @@ TEE_Result TA_InvokeCommandEntryPoint(void      *sess_ctx,
     switch (cmd_id) {
 
         case TA_FTPM_SUBMIT_COMMAND: {
-            return fTPM_Submit_Command(param_types, params);
+            Status = fTPM_Submit_Command(param_types, params);
+            return Status;
         }
 
         case TA_FTPM_EMULATE_PPI: {
-            return fTPM_Emulate_PPI(param_types, params);
+            Status = fTPM_Emulate_PPI(param_types, params);
+            return Status;
         }
 
         case TA_FTPM_GET_VARIABLE: {
-            return fTPM_AuthVar_Get(param_types, params);
+            Status = fTPM_AuthVar_Get(param_types, params);
+            return Status;
         }
 
         case TA_FTPM_GET_NEXT_VARIABLE: {
-            return fTPM_AuthVar_GetNext(param_types, params);
+            Status = fTPM_AuthVar_GetNext(param_types, params);
+            return Status;
         }
 
         case TA_FTPM_SET_VARIABLE: {
-            return fTPM_AuthVar_Set(param_types, params);
+            Status = fTPM_AuthVar_Set(param_types, params);
+            return Status;
         }
 
         case TA_FTPM_QUERY_VARINFO: {
-            return fTPM_AuthVar_Query(param_types, params);
+            Status = fTPM_AuthVar_Query(param_types, params);
+            return Status;
+        }
 
+        case TA_FTPM_EXIT_BOOT_SERVICES: {
+            // TODO: DO WE CARE ABOUT PARAMS HERE?
+            fTPMIsRuntime = true;
+            return;
         }
 
         default: {

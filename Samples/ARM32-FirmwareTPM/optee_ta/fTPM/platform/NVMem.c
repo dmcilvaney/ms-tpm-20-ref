@@ -240,11 +240,11 @@ _plat__NvInitFromStorage()
 	s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
 	if ((s_chipRevision != *(UINT64*)&(s_NV[NV_CHIP_REVISION_OFFSET]))) {
 
-		// Failure to validate revision, re-init.
-		memset(s_NV, 0, NV_CHIP_MEMORY_SIZE);
+		// Failure to validate revision, re-init (only the TPM's NV memory)
+		memset(s_NV, 0, (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE));
 
 		// Dirty the block map, we're going to re-init.
-        NV_DIRTY_ALL(s_blockMap);
+        _plat__MarkDirtyBlocks(0, (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE));
 
 		// Init with proper revision
 		s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
@@ -357,6 +357,14 @@ Error:
 	}
 
 	return;
+}
+
+LIB_EXPORT int
+_plat__NVInitAuthVar(
+    void
+)
+{
+    return(AuthVarInitStorage((NV_MEMORY_SIZE + NV_TPM_STATE_SIZE), s_NV));
 }
 
 
