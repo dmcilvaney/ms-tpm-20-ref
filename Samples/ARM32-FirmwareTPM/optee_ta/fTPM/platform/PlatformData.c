@@ -39,6 +39,7 @@
 //** Includes
 #include    "Implementation.h"
 #include    "PlatformData.h"
+#include    "NvMemoryLayout.h"
 
 // From Cancel.c
 BOOL                 s_isCanceled;
@@ -73,7 +74,7 @@ uint32_t             lastEntropy;
 
 
 // For NVMem.c
-unsigned char        s_NV[NV_MEMORY_SIZE];
+unsigned char        s_NV[NV_TOTAL_MEMORY_SIZE];
 BOOL                 s_NvIsAvailable;
 BOOL                 s_NV_unrecoverable;
 BOOL                 s_NV_recoverable;

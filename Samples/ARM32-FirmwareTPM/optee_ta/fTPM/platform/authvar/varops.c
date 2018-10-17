@@ -393,6 +393,9 @@ SetVariable(
 
     // Now pickup parameter fields
     vendorGuid = SetParam->VendorGuid;
+    DMSG("vendorGuid addr: 0x%x",(uint32_t)&vendorGuid);
+    DHEXDUMP(&vendorGuid,sizeof(vendorGuid));
+
     attrib.Flags = SetParam->Attributes.Flags;
     varName = (PWSTR)(&SetParam->Payload[SetParam->OffsetName]);
     data = &SetParam->Payload[SetParam->OffsetData];

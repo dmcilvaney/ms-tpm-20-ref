@@ -43,26 +43,12 @@
 #include "stdint.h"
 #include "malloc.h"
 #include "string.h"
+#include "NvMemoryLayout.h"
 
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
 
-//
-// Overall size of NV, not just the TPM's NV storage (128K!)
-//
-// A change to this constant should be the result of a change to
-// implementation.h, Admin.h, and/or varops.h. A change to the size
-// of fTPM's NV memory needs to be consistent accross these headers.
-#define NV_CHIP_MEMORY_SIZE	(NV_MEMORY_SIZE + NV_TPM_STATE_SIZE + NV_AUTHVAR_SIZE)
 
-//
-// OpTEE still has an all or nothing approach to reads/writes. To provide
-// more performant access to storage, break up NV accross 1Kbyte blocks.
-//
-// Note that NV_CHIP_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.
-//
-#define NV_BLOCK_SIZE       (0x1000UL)
-#define NV_BLOCK_COUNT      ((NV_CHIP_MEMORY_SIZE) / (NV_BLOCK_SIZE))
 
 // Used to translate nv offset to block map offset
 #define NV_INDEX_MASK       (0xC0UL)
@@ -114,7 +100,6 @@ for (int i = 0; i < BLOCKMAP_MAXINDEX; i++) \
 //
 static BOOL  s_NVChipFileNeedsManufacture = FALSE;
 static BOOL  s_NVInitialized = FALSE;
-static UCHAR s_NV[NV_CHIP_MEMORY_SIZE];
 
 //
 // Firmware revision
@@ -127,12 +112,6 @@ static const UINT32 firmwareV2 = FIRMWARE_V2;
 //
 static UINT64 s_chipRevision = 0;
 
-//
-// This offset puts the revision field immediately following the TPM Admin
-// state. The Admin space in NV is down to ~16 bytes but is padded out to
-// 256bytes to avoid alignment issues and allow for growth.
-//
-#define NV_CHIP_REVISION_OFFSET ((NV_MEMORY_SIZE) + (TPM_STATE_SIZE) - 8)
 
 VOID
 _plat__NvInitFromStorage()
@@ -143,6 +122,9 @@ _plat__NvInitFromStorage()
 	UINT32 objID;
 	UINT32 bytesRead;
 	TEE_Result Result;
+
+	DMSG("NV Memory is located at 0x%x", (uint32_t)s_NV);
+	DHEXDUMP(s_NV, NV_TOTAL_MEMORY_SIZE);
 
 	// Don't re-initialize.
 	if (s_NVInitialized) {
@@ -157,6 +139,7 @@ _plat__NvInitFromStorage()
 	//
 
 	initialized = TRUE;
+
 
 	// Collect storage objects and init NV.
 	for (i = 0; i < NV_BLOCK_COUNT; i++) {
@@ -425,8 +408,10 @@ _plat__NVEnable(
         return 0;
     }
 
+	DMSG("s_NV is at 0x%x and is size 0x%x",(uint32_t)s_NV, NV_TOTAL_MEMORY_SIZE);
+
 	// Clear NV
-    memset(s_NV, 0, NV_CHIP_MEMORY_SIZE);
+    memset(s_NV, 0, NV_TOTAL_MEMORY_SIZE);
 
     // Prepare for potential failure to retreieve NV from storage
     s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
@@ -549,7 +534,7 @@ _plat__NvMemoryRead(
     void                *data                // OUT: data buffer
 )
 {
-    pAssert((startOffset + size) <= NV_CHIP_MEMORY_SIZE);
+    pAssert((startOffset + size) <= NV_TOTAL_MEMORY_SIZE);
     pAssert(s_NV != NULL);
 
     memcpy(data, &s_NV[startOffset], size);
@@ -602,7 +587,7 @@ _plat__NvMemoryWrite(
     void                *data                // OUT: data buffer
 )
 {
-    pAssert(startOffset + size <= NV_CHIP_MEMORY_SIZE);
+    pAssert(startOffset + size <= NV_TOTAL_MEMORY_SIZE);
     pAssert(s_NV != NULL);
 
 	_plat__MarkDirtyBlocks(startOffset, size);
@@ -635,8 +620,8 @@ _plat__NvMemoryMove(
     unsigned int        size                  // IN: size of data being moved
 )
 {
-    pAssert(sourceOffset + size <= NV_CHIP_MEMORY_SIZE);
-    pAssert(destOffset + size <= NV_CHIP_MEMORY_SIZE);
+    pAssert(sourceOffset + size <= NV_TOTAL_MEMORY_SIZE);
+    pAssert(destOffset + size <= NV_TOTAL_MEMORY_SIZE);
     pAssert(s_NV != NULL);
 
 	_plat__MarkDirtyBlocks(sourceOffset, size);

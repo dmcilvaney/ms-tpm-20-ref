@@ -49,6 +49,7 @@
 #include "TpmSal.h"
 #include "TpmError.h"
 #include "varops.h"
+#include <NvMemoryLayout.h>
 
 // Parameter reference and types from ref impl headers
 #ifndef UNREFERENCED_PARAMETER
@@ -75,12 +76,6 @@ typedef unsigned char * PUCHAR;
 typedef void            VOID;
 typedef void *          PVOID;
 #endif
-
-// Admin space tacked on to NV, padded out to NV_BLOCK_SIZE alignment.
-#define NV_TPM_STATE_SIZE   0x1000
-
-// Actual size of Admin space used. (See note in NVMem.c)
-#define TPM_STATE_SIZE      0x10
 
 // Select TPM types/defines for AdminPPI.c
 typedef UINT16  TPM_ST;

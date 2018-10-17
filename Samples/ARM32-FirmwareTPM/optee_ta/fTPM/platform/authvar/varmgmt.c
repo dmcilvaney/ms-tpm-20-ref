@@ -32,6 +32,7 @@
  */
 
 #include <varmgmt.h>
+#include <NvMemoryLayout.h>
 
 //
 // Offsets and lengths (Note: naturally NV_BLOCK_SIZE aligned!)
@@ -84,7 +85,6 @@ VTYPE_INFO VarInfo[VTYPE_END] =
 //
 // Offsets/ptrs for NV vriable storage
 //
-static PBYTE s_NV = NULL;
 static UINT32 s_nextFree = NV_AUTHVAR_START;
 static const UINT32 s_nvLimit = NV_AUTHVAR_START + NV_AUTHVAR_SIZE;
 
@@ -372,7 +372,7 @@ CreateVariable(
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
-        DMSG("non volatile var");
+        DMSG("volatile var");
         // Validate length
         if (DataSize == 0)
         {
@@ -447,7 +447,7 @@ CreateVariable(
     else
     {
         // Nope, create new non-volatile variable.
-        DMSG("volatile");
+        DMSG("non-volatile");
         // Which list is this variable destined for?
         if (!GetVariableType(UnicodeName->Buffer, VendorGuid, Attributes, &varType))
         {
@@ -483,23 +483,30 @@ CreateVariable(
 
         // Init pointers to new fields
         DMSG("Dies here?");
-        newVar = (PUEFI_VARIABLE)s_NV[s_nextFree];
+        DMSG("s_NV is at 0x%x", (uint32_t)s_NV);
+        DMSG("offset is 0x%x", s_nextFree);
+        newVar =    (PUEFI_VARIABLE)&(s_NV[s_nextFree]);
+        DMSG("newVar: 0x%x", (uint32_t)newVar);
         newStr = (PWSTR)((INT_PTR)newVar + sizeof(UEFI_VARIABLE));
         newExt = (PEXTENDED_ATTRIBUTES)((INT_PTR)newStr + uStrLen);
         newData = (PBYTE)((INT_PTR)newExt + extAttribLen);
 
+        DMSG("create");
+
+
+        DMSG("vendorguid is 0x%x",(uint32_t)VendorGuid);
         // Init variable structure
         newVar->VendorGuid = *VendorGuid;
         newVar->Attributes.Flags = Attributes.Flags;
         newVar->NameSize = uStrLen;
         newVar->Name = s_nextFree + sizeof(UEFI_VARIABLE);
-        
+        DMSG("create");
         // Copy name and data
         memmove(newStr, UnicodeName->Buffer, UnicodeName->MaximumLength);
 
         // Size of var structure before any appended data that may come later
         newVar->AllocSize = totalNv;
-
+        DMSG("create");
         // Extended attributes, if necessary
         if (!extAttribLen)
         {
@@ -514,7 +521,7 @@ CreateVariable(
             newVar->ExtAttrib = (INT_PTR)newExt - (INT_PTR)newVar;
             memmove(newExt, ExtAttributes, extAttribLen);
         }
-
+        DMSG("create");
         // Data fields
         newVar->DataSize = DataSize;
         newVar->Data = newData;
@@ -524,13 +531,14 @@ CreateVariable(
         newVar->Start = s_nextFree;
         newVar->End = s_nextFree + totalNv;
         newVar->Next = 0;
-
+        DMSG("create");
         // We've touched NV so, mark dirty blocks
         _plat__MarkDirtyBlocks(s_nextFree, totalNv);
 
-        // Update offset to next free byte
-        s_nextFree += totalNv;
-
+        DMSG("Updating s_nextFree from 0x%x by incrementing %x (%x)", s_nextFree, ROUNDUP(totalNv, 8), totalNv);
+        // Update offset to next free byte alligned to 64 bits
+        s_nextFree += ROUNDUP(totalNv, 8);
+        DMSG("create");
         NV_AUTHVAR_STATE authVarState;
 		authVarState.NvEnd = s_nextFree;
 		_admin__SaveAuthVarState(&authVarState);
