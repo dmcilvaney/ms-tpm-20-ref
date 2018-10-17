@@ -146,6 +146,7 @@ GetVariable(
     {
         // No.
         status = TEE_ERROR_ITEM_NOT_FOUND;
+        DMSG("Get: not found");
         goto Cleanup;
     }
 
@@ -153,9 +154,8 @@ GetVariable(
     RetrieveVariable(varPtr, GetResult, GetReultSize, NULL);
     status = TEE_SUCCESS;
 
-    DMSG("Done get");
-
 Cleanup:
+    DMSG("Done get");
     return status;
 }
 

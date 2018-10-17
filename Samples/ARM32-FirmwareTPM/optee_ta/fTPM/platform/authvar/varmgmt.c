@@ -156,6 +156,7 @@ AuthVarInitStorage(
     PCGUID guid;
     UINT32 size;
     VARTYPE varType;
+    VARTYPE i;
     BOOLEAN collapseList;
 
     // Sanity check on storage offset
@@ -189,6 +190,13 @@ AuthVarInitStorage(
         DMSG("Sanity check failed");
         return 0;
     }
+
+    for (i = 0; i < VTYPE_END; i++) {
+        InitializeListHead(&(VarInfo[i].Head));
+        DMSG("Head %d address is 0x%x", i, (uint32_t)&VarInfo[i].Head);
+        DMSG("Head f:%x, Head b:%x", (uint32_t)VarInfo[i].Head.Flink, (uint32_t)VarInfo[i].Head.Blink);
+    }
+    
 
     if (s_nextFree == StartingOffset) {
         DMSG("First run, we are fine");
@@ -364,6 +372,7 @@ CreateVariable(
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
+        DMSG("non volatile var");
         // Validate length
         if (DataSize == 0)
         {
@@ -418,8 +427,18 @@ CreateVariable(
         // Note the lack of a check against ExtendedAttributes.
         // We do not implement authenticated volatile variables.
 
+        int i =0;
+        for (i = 0; i < VTYPE_END; i++) {
+            DMSG("Head %d address is 0x%x", i, (uint32_t)&VarInfo[i].Head);
+            DMSG("Head f:%x, Head b:%x", (uint32_t)VarInfo[i].Head.Flink, (uint32_t)VarInfo[i].Head.Blink);
+        }
+
+        DMSG("Updating list of type %d", VTYPE_VOLATILE);
+        DMSG("at %x", (uint32_t)&VarInfo[VTYPE_VOLATILE].Head);
+        DMSG("we have f=%x, t=%x", (uint32_t)VarInfo[VTYPE_VOLATILE].Head.Flink, (uint32_t)VarInfo[VTYPE_VOLATILE].Head.Blink);
+
         // Add it to the list
-        InsertTailList(&VarInfo[VTYPE_VOLATILE].Head, &newVar->List);
+        InsertTailList(&(VarInfo[VTYPE_VOLATILE].Head), &newVar->List);
 
         // Success
         status = TEE_SUCCESS;
@@ -428,7 +447,7 @@ CreateVariable(
     else
     {
         // Nope, create new non-volatile variable.
-
+        DMSG("volatile");
         // Which list is this variable destined for?
         if (!GetVariableType(UnicodeName->Buffer, VendorGuid, Attributes, &varType))
         {
@@ -452,6 +471,8 @@ CreateVariable(
         // Total NV requirement to store this var
         totalNv = sizeof(UEFI_VARIABLE) + uStrLen + DataSize + extAttribLen;
 
+        DMSG("Storing %d", totalNv);
+
         // Is there enough room on this list and in NV?
         if ( (totalNv > VarInfo[varType].RemainingBytes) ||
             ((totalNv + s_nextFree) > s_nvLimit))
@@ -461,6 +482,7 @@ CreateVariable(
         }
 
         // Init pointers to new fields
+        DMSG("Dies here?");
         newVar = (PUEFI_VARIABLE)s_NV[s_nextFree];
         newStr = (PWSTR)((INT_PTR)newVar + sizeof(UEFI_VARIABLE));
         newExt = (PEXTENDED_ATTRIBUTES)((INT_PTR)newStr + uStrLen);
@@ -513,8 +535,12 @@ CreateVariable(
 		authVarState.NvEnd = s_nextFree;
 		_admin__SaveAuthVarState(&authVarState);
 
+        DMSG("Updating list of type %d", varType);
+        DMSG("at %x we have value %x", &VarInfo[varType].Head, VarInfo[varType].Head);
+
         // Update the in-memory list
         InsertTailList(&VarInfo[varType].Head, &newVar->List);
+        DMSG("Done insert");
     }
 Cleanup:
     return TEE_SUCCESS;
