@@ -123,9 +123,6 @@ _plat__NvInitFromStorage()
 	UINT32 bytesRead;
 	TEE_Result Result;
 
-	DMSG("NV Memory is located at 0x%x", (uint32_t)s_NV);
-	DHEXDUMP(s_NV, NV_TOTAL_MEMORY_SIZE);
-
 	// Don't re-initialize.
 	if (s_NVInitialized) {
 		return;

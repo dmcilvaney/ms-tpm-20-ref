@@ -324,7 +324,7 @@ SearchList(
             cur = cur->Flink;
         }
     }
-
+    DMSG("Done compare");
     return;
 }
 
@@ -528,8 +528,6 @@ CreateVariable(
         memmove(newData, Data, DataSize);
 
         // Creating this var we don't yet have appended data
-        newVar->Start = s_nextFree;
-        newVar->End = s_nextFree + totalNv;
         newVar->Next = 0;
         DMSG("create");
         // We've touched NV so, mark dirty blocks
@@ -588,13 +586,16 @@ RetrieveVariable(
     UINT32 size, length;
     TEE_Result status = TEE_SUCCESS;
 
+    DMSG("ret");
+    DMSG("Getting value from 0x%x", (uint32_t)Var);
+
     // Detect integer overflow
     if (((UINT32)ResultBuf + ResultBufLen) < (UINT32)ResultBuf)
     {
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
-
+DMSG("ret");
     // Sanity check buffer length
     // TODO: Guard against overflow on this one too
     size = Var->DataSize;
@@ -603,22 +604,25 @@ RetrieveVariable(
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
-
+DMSG("ret");
     // Copy variable data
     ResultBuf->Attributes = Var->Attributes.Flags;
     ResultBuf->DataSize = size;
     ResultBuf->Size = sizeof(VARIABLE_GET_RESULT);
-
+DMSG("ret");
     // Init for copy
     dstPtr = ResultBuf->Data;
     limit = (INT_PTR)dstPtr + size;
-
+DMSG("ret");
     // Do the copy (accross appended data entries if necessary)
     do {
         // Calculate length and copy data
-        length = Var->End - Var->Data;
-        memmove(dstPtr, (INT_PTR)Var + Var->Data, length);
-
+        length = Var->DataSize;
+        DMSG("Data:0x%x", Var->Data);
+        DMSG("ret");
+        DMSG("COpying 0x%x bytes from 0x%x to 0x%x",length, Var->Data, dstPtr);
+        memcpy(dstPtr, Var->Data, length);
+        DMSG("ret");
         // Adjust destination pointer
         dstPtr += length;
 
@@ -936,7 +940,7 @@ ReplaceVariable(
     // Do the copy (accross appended data entries if necessary)
     do {
         // Determine length for copy
-        canFit = Var->End - Var->Data;
+        canFit = Var->DataSize;
         length = MIN(canFit, remaining);
 
         // Length is either the size of this entry or our remaining byte count

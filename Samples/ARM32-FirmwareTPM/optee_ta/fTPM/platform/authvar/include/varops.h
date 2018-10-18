@@ -79,8 +79,6 @@ typedef struct _UEFI_VARIABLE
     INT_PTR ExtAttrib;      // Offset/ptr to extended attributes (auth only)
     UINT32 DataSize;        // Size of var data
     INT_PTR Data;           // Offset/ptr to var data
-    INT_PTR Start;          // NV Only: Starting offset for variable in NV
-    INT_PTR End;            // NV Only: Ending offset for variable in NV
     INT_PTR Next;           // NV Only: Offset to appended data (or zero)
 } UEFI_VARIABLE, *PUEFI_VARIABLE;
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;

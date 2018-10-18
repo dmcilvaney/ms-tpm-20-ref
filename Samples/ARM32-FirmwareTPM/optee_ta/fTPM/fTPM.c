@@ -469,6 +469,10 @@ static TEE_Result fTPM_AuthVar_Get(
     DMSG("AV cmd");
     Status = GetVariable(GetParamSize, GetParam, &GetResultSize, GetResult);
 
+    if (Status == TEE_ERROR_SHORT_BUFFER) {
+        TEE_Panic(TEE_ERROR_SHORT_BUFFER);
+    }
+
     return Status;
 }
 

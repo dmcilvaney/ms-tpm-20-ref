@@ -150,6 +150,8 @@ GetVariable(
         goto Cleanup;
     }
 
+    DMSG("Retrieving variable");
+
     // Yes, go get it.
     RetrieveVariable(varPtr, GetResult, GetReultSize, NULL);
     status = TEE_SUCCESS;
