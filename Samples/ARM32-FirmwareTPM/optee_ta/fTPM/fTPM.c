@@ -469,9 +469,13 @@ static TEE_Result fTPM_AuthVar_Get(
     DMSG("AV cmd");
     Status = GetVariable(GetParamSize, GetParam, &GetResultSize, GetResult);
 
-    if (Status == TEE_ERROR_SHORT_BUFFER) {
-        TEE_Panic(TEE_ERROR_SHORT_BUFFER);
-    }
+    Params[2].value.a = GetResultSize;
+
+    // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
+    // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
+    // are handled as errors. Return values are also passed  back through
+    // parameter 2b to be handled by the command specific part of the driver.
+    Params[2].value.b = Status;
 
     return Status;
 }
@@ -516,7 +520,20 @@ static TEE_Result fTPM_AuthVar_GetNext(
     // TODO: Check that we're init'ed first
 
     // Call VarOps
-    Status = GetNextVariableName(GetNextParamSize, GetNextParam, GetNextResultSize, GetNextResult);
+    Status = GetNextVariableName(GetNextParamSize, GetNextParam, &GetNextResultSize, GetNextResult);
+
+    Params[2].value.a = GetNextResultSize;
+
+    // Authvars driver expects TEEC_SUCCESS or TEEC_ERROR_ITEM_NOT_FOUND as
+    // a return value, all other values are handled as errors. Any other errors
+    // should be passed through Parameter 2b to be handled by the command
+    // specific part of the driver.
+    if (Status == TEE_ERROR_SHORT_BUFFER) {
+        Params[2].value.b = TEE_ERROR_SHORT_BUFFER;
+        Status = TEE_SUCCESS;
+    } else {
+        Params[2].value.b = Status;
+    }
 
     return Status;
 }
@@ -557,6 +574,9 @@ static TEE_Result fTPM_AuthVar_Set(
     
     // Call VarOps
     Status = SetVariable(SetParamSize, SetParam);
+
+    Params[2].value.a = 0;
+    Params[2].value.b = Status;
 
     return Status;
 }

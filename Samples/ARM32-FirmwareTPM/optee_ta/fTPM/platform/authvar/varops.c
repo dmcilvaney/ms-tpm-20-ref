@@ -231,22 +231,30 @@ GetNextVariableName(
     // Init for search
     nextVar = NULL;
 
+    DMSG("Get next, length is %d", varNameLen);
+
     // Is this the first request?
     if (!varNameLen)
     {
+        DMSG("Frist run");
         // Yes, return first variable that can be found in any list
         for (i = 0; i < ARRAY_SIZE(VarInfo); i++)
         {
+            DMSG("Checking array %d", i);
             if (!IsListEmpty(&VarInfo[i].Head))
             {
+                DMSG("Found a head!");
                 // Pick up first variable
                 nextVar = (PUEFI_VARIABLE)VarInfo[i].Head.Flink;
                 break;
+            } else {
+                DMSG("No head");
             }
         }
     }
     else
     {
+        DMSG("Next run");
         // Validation on name length (we already know it's non-zero)
         if (varNameLen % sizeof(WCHAR))
         {
@@ -328,6 +336,7 @@ GetNextVariableName(
     status = TEE_SUCCESS;
 
 Cleanup:
+    for(;;);
     return status;
 }
 

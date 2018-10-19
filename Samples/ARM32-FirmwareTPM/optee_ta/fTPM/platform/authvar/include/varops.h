@@ -73,13 +73,14 @@ typedef struct _UEFI_VARIABLE
     GUID VendorGuid;        // Associated GUID
     ATTRIBUTES Attributes;  // UEFI variable attributes
     USHORT NameSize;        // Length of var name
-    INT_PTR Name;           // Offset/ptr to var name
+    INT_PTR NameOffset;        // Offset to var name
     UINT32 AllocSize;       // Total size of this var entry
     UINT32 ExtAttribSize;   // Size of extended attributes (auth only)
-    INT_PTR ExtAttrib;      // Offset/ptr to extended attributes (auth only)
-    UINT32 DataSize;        // Size of var data
-    INT_PTR Data;           // Offset/ptr to var data
-    INT_PTR Next;           // NV Only: Offset to appended data (or zero)
+    INT_PTR ExtAttribOffset; // Offset to extended attributes (auth only)
+    UINT32 DataSize;        // Size of var data in this section
+    INT_PTR DataOffset;        // Offset to var data
+    INT_PTR NextOffset;        // NV Only: Offset to appended data (or zero)
+    INT_PTR BaseAddress;    // Address offsets are relative to, zero if volatile
 } UEFI_VARIABLE, *PUEFI_VARIABLE;
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
 
@@ -188,8 +189,6 @@ typedef struct _VSVARTYPEINFO
 {
     PCWSTR Name;                    // Var category name (storage area)
     CONST VARTYPE Type;             // Var type for this space
-    CONST UINT32 StartByte;         // Start of reservation (TODO: REMOVE)
-    UINT32 RemainingBytes;          // Available storage
     LIST_ENTRY Head;                // Pointer to top of category list
     CONST BOOLEAN IsNonVolatile;    // Vars in this section are [non-]volatile
 } VTYPE_INFO;
