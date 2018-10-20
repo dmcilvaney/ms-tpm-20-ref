@@ -6,6 +6,8 @@ TPM_ROOT := ../../../../
 
 include $(TA_DEV_KIT_DIR)/mk/ta_dev_kit.mk
 
+CPPFLAGS +=  -fshort-wchar
+
 clean: clean_stripped_file
 .PHONY: clean_stripped_file
 clean_stripped_file:

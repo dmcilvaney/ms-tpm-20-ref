@@ -109,6 +109,9 @@ typedef SIZE_T      *PSIZE_T;
  // NOTE: Constants of the form L"" are 32-bit wide on GCC unless -fshort-wchar.
  // For compatibility with Windows convention we still use 16-bit.
  //
+
+// Call this somewhere in code, the compiler will throw an error if wchar_t is the wrong size.
+#define WCHAR_SIZE_CHECK (void)sizeof(uint8_t[(int32_t)(sizeof(uint16_t) - sizeof(wchar_t))])
 typedef wchar_t WCHAR;
 
 typedef WCHAR *PWCHAR, *LPWCH, *PWCH;
@@ -247,6 +250,7 @@ int wcscmp(
 )
 {
     int ret = 0;
+    WCHAR_SIZE_CHECK;
 
     while ((ret = (int)(*src - *dst)) == 0 && *dst)
         ++src, ++dst;
@@ -268,7 +272,11 @@ size_t wcslen(const wchar_t* str)
 
     do {
         ++len;
-    } while (*++p != L'\0');
+        ++p;
+        //DMSG("p:(0x%x)0x%x, NULL:0x%x", (INT_PTR)p, (uint16_t)*p, (uint16_t)L'\0');
+    } while (*p != L'\0');
+    //DMSG("size of wchar: %d", sizeof(wchar_t));
+    //DHEXDUMP(str, len*4);
 
     return len;
 }

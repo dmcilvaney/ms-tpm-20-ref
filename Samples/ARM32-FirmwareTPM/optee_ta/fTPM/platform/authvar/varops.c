@@ -154,6 +154,8 @@ GetVariable(
 
     // Yes, go get it.
     RetrieveVariable(varPtr, GetResult, GetReultSize, NULL);
+    DMSG("Retrieved %d bytes into 0x%x", GetResultSize, GetResult);
+    DHEXDUMP(GetResult->Data, GetResult->DataSize);
     status = TEE_SUCCESS;
 
 Cleanup:
@@ -329,7 +331,8 @@ GetNextVariableName(
     GetNextResult->VendorGuid = nextVar->VendorGuid;
     GetNextResult->Size = sizeof(VARIABLE_GET_NEXT_RESULT);
     memmove(GetNextResult->Name, 
-        nextVar->Name, nextVar->NameSize);
+        (nextVar->NameOffset + nextVar->BaseAddress),
+        nextVar->NameSize);
 
     // Success, now update size field with bytes written
     *GetNextResultSize = sizeof(VARIABLE_GET_NEXT_RESULT) + nextVar->NameSize;
@@ -502,7 +505,7 @@ SetVariable(
         // Is this an append operation?
         if (attrib.AppendWrite)
         {
-            DMSG("set");
+            DMSG("Append");
             status = AppendVariable(
                 varPtr,
                 varType,
@@ -521,7 +524,7 @@ SetVariable(
         if ((!(fTPMIsRuntime) && (attrib.BootService)) ||
             ((fTPMIsRuntime) && (attrib.RuntimeAccess) && (attrib.NonVolatile)))
         {
-            DMSG("set");
+            DMSG("Replace");
             status = ReplaceVariable(
                 varPtr,
                 varType,
@@ -618,7 +621,10 @@ Cleanup:
     {
         TEE_Free(content);
     }
+    _plat__NvCommit();
     DMSG("set done");
+    DHEXDUMP(data, dataSize);
+    DMSG("Data:0x%x, Size:0x%x", data, dataSize);
     return status;
 }
 

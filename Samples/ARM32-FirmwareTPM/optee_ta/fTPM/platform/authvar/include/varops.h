@@ -69,18 +69,18 @@ typedef struct _EXTENDED_ATTRIBUTES
 // UEFI Variable Structure
 typedef struct _UEFI_VARIABLE
 {
-    LIST_ENTRY List;        // Flink/Blink
-    GUID VendorGuid;        // Associated GUID
-    ATTRIBUTES Attributes;  // UEFI variable attributes
-    USHORT NameSize;        // Length of var name
-    INT_PTR NameOffset;        // Offset to var name
-    UINT32 AllocSize;       // Total size of this var entry
-    UINT32 ExtAttribSize;   // Size of extended attributes (auth only)
-    INT_PTR ExtAttribOffset; // Offset to extended attributes (auth only)
-    UINT32 DataSize;        // Size of var data in this section
-    INT_PTR DataOffset;        // Offset to var data
-    INT_PTR NextOffset;        // NV Only: Offset to appended data (or zero)
-    INT_PTR BaseAddress;    // Address offsets are relative to, zero if volatile
+    LIST_ENTRY List;            // Flink/Blink
+    GUID VendorGuid;            // Associated GUID
+    ATTRIBUTES Attributes;      // UEFI variable attributes
+    USHORT NameSize;            // Length of var name in bytes
+    INT_PTR NameOffset;         // Offset to var name from BaseAddress
+    UINT32 AllocSize;           // Total size of this var entry
+    UINT32 ExtAttribSize;       // Size of extended attributes (auth only)
+    INT_PTR ExtAttribOffset;    // Offset to extended attributes (auth only) from BaseAddress
+    UINT32 DataSize;            // Size of var data in this section
+    INT_PTR DataOffset;         // Offset to var data from BaseAddress
+    INT_PTR NextOffset;         // NV Only: Offset to appended data (or zero) from BaseAddress
+    INT_PTR BaseAddress;        // Address which offsets are relative to, zero if volatile
 } UEFI_VARIABLE, *PUEFI_VARIABLE;
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
 
