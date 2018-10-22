@@ -63,7 +63,7 @@ typedef union {
 
 typedef struct _DATA_BLOB {
     UINT32 DataSize;        // Size of data
-    BYTE Data[0];           // Data
+    BYTE Data[];            // Data
 } DATA_BLOB, *PDATA_BLOB;
 
 // Extended attributes for authenticated variables

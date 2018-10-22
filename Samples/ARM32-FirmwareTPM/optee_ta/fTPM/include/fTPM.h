@@ -53,6 +53,8 @@
 #define TA_FTPM_GET_NEXT_VARIABLE   (3)     // Get next autheiticated variable
 #define TA_FTPM_SET_VARIABLE        (4)     // Set authenticated variable
 #define TA_FTPM_QUERY_VARINFO       (5)     // Query authenticated variable info
+#define TA_FTPM_EXIT_BOOT_SERVICES  (6)     // Used to signal ExitBootServices()
+
 
 //
 // These must match values from reference/TPM/include/Implementation.h

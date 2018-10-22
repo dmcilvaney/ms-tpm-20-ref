@@ -303,8 +303,7 @@ GetNextVariableName(
     GetNextResult->NameSize = nextVar->NameSize;
     GetNextResult->VendorGuid = nextVar->VendorGuid;
     GetNextResult->Size = sizeof(VARIABLE_GET_NEXT_RESULT);
-    memmove(GetNextResult->Name, 
-        nextVar->Name, nextVar->NameSize);
+    memmove(GetNextResult->Name, nextVar->Name, nextVar->NameSize);
 
     // Success, now update size field with bytes written
     *GetNextResultSize = sizeof(VARIABLE_GET_NEXT_RESULT) + nextVar->NameSize;
