@@ -3,7 +3,13 @@ NOWERROR ?= 1
 CFG_TA_DEBUG ?= 1
 CFG_TEE_TA_LOG_LEVEL ?= 1
 
-cflags-y += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector -mno-unaligned-access
+cflags-y += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector
+
+ifeq ($(CFG_ARM64_ta_arm64),y)
+cflags-y += -mstrict-align
+else
+cflags-y += -mno-unaligned-access
+endif
 
 ifeq ($(CFG_TA_DEBUG),y)
 cflags-y += -DfTPMDebug=1
