@@ -80,6 +80,7 @@
 // state. The Admin space in NV is down to ~16 bytes but is padded out to
 // 1k bytes to avoid alignment issues and allow for growth.
 //
+//TODO: don't use sizeof(uint32)
 #define NV_CHIP_REVISION_OFFSET ( (NV_MEMORY_SIZE) + (NV_TPM_STATE_SIZE) - (2 * sizeof(UINT32)) )
 
 

@@ -600,7 +600,7 @@ _plat__NvMemoryClear(
     unsigned int     size                   // IN: size of bytes to clear
     )
 {
-    pAssert(startOffset + size <= NV_MEMORY_SIZE);
+    pAssert(startOffset + size <= NV_TOTAL_MEMORY_SIZE);
 
 	_plat__MarkDirtyBlocks(startOffset, size);
     memset(&s_NV[startOffset], 0, size);

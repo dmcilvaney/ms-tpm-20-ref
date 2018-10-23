@@ -47,7 +47,7 @@ TEE_Result
 GetVariable(
     UINT32               GetParamSize,  // IN
     VARIABLE_GET_PARAM  *GetParam,      // IN
-    UINT32              *GetReultSize,  // INOUT
+    UINT32              *GetResultSize,  // INOUT
     VARIABLE_GET_RESULT *GetResult      // OUT
 )
 /*++
@@ -90,7 +90,7 @@ GetVariable(
     }
 
     // Request validation
-    if (!(GetReultSize) || (GetParam->Size != sizeof(VARIABLE_GET_PARAM)))
+    if (!(GetResultSize) || (GetParam->Size != sizeof(VARIABLE_GET_PARAM)))
     {
         DMSG("get");
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -98,10 +98,10 @@ GetVariable(
     }
 
     // Size of result buffer
-    if (*GetReultSize < sizeof(VARIABLE_GET_RESULT))
+    if (*GetResultSize < sizeof(VARIABLE_GET_RESULT))
     {
         DMSG("get");
-        DMSG("value is %d, we need at least %d", *GetReultSize, sizeof(VARIABLE_GET_RESULT));
+        DMSG("value is %d, we need at least %d", *GetResultSize, sizeof(VARIABLE_GET_RESULT));
         DMSG("Caller has requested %d",GetResult->Size);
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
@@ -153,8 +153,10 @@ GetVariable(
     DMSG("Retrieving variable");
 
     // Yes, go get it.
-    RetrieveVariable(varPtr, GetResult, GetReultSize, NULL);
-    DMSG("Retrieved %d bytes into 0x%x", GetResultSize, GetResult);
+    RetrieveVariable(varPtr, GetResult, *GetResultSize, NULL);
+    *GetResultSize = GetResult->DataSize;
+
+    DMSG("Retrieved up to %d bytes into 0x%x", *GetResultSize, GetResult);
     DHEXDUMP(GetResult->Data, GetResult->DataSize);
     status = TEE_SUCCESS;
 
@@ -312,6 +314,7 @@ GetNextVariableName(
     // Are we done?
     if (nextVar == NULL)
     {
+        DMSG("Couldn't find another, done");
         status = TEE_ERROR_ITEM_NOT_FOUND;
         goto Cleanup;
     }
@@ -319,8 +322,11 @@ GetNextVariableName(
     // Prepare the result buffer with variable size, name, and guid
     // TODO: Guard against overflow here
     size = nextVar->NameSize + sizeof(VARIABLE_GET_NEXT_RESULT);
+    DMSG("Var at 0x%x has name size %d", (INT_PTR)nextVar, size);
+    DHEXDUMP(nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
     if (size > *GetNextResultSize)
     {
+        DMSG("Short buffer");
         *GetNextResultSize = size;
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
@@ -329,17 +335,20 @@ GetNextVariableName(
     // Update output buffer
     GetNextResult->NameSize = nextVar->NameSize;
     GetNextResult->VendorGuid = nextVar->VendorGuid;
-    GetNextResult->Size = sizeof(VARIABLE_GET_NEXT_RESULT);
     memmove(GetNextResult->Name, 
         (nextVar->NameOffset + nextVar->BaseAddress),
         nextVar->NameSize);
 
     // Success, now update size field with bytes written
     *GetNextResultSize = sizeof(VARIABLE_GET_NEXT_RESULT) + nextVar->NameSize;
+    GetNextResult->Size = *GetNextResultSize;
+
+    DMSG("Return buffer:");
+    DHEXDUMP(GetNextResult, *GetNextResultSize);
+
     status = TEE_SUCCESS;
 
 Cleanup:
-    for(;;);
     return status;
 }
 
@@ -349,7 +358,7 @@ SetVariable(
     VARIABLE_SET_PARAM  *SetParam
 )
 {
-    EXTENDED_ATTRIBUTES extAttrib;
+    EXTENDED_ATTRIBUTES extAttrib = {0};
     GUID vendorGuid;
     UNICODE_STRING unicodeName;
     PBYTE data, content;

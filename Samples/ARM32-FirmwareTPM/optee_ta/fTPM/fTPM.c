@@ -469,6 +469,8 @@ static TEE_Result fTPM_AuthVar_Get(
     DMSG("AV cmd");
     Status = GetVariable(GetParamSize, GetParam, &GetResultSize, GetResult);
 
+    DMSG("Get result size is 0x%x", GetResultSize);
+
     Params[2].value.a = GetResultSize;
 
     // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
@@ -524,16 +526,11 @@ static TEE_Result fTPM_AuthVar_GetNext(
 
     Params[2].value.a = GetNextResultSize;
 
-    // Authvars driver expects TEEC_SUCCESS or TEEC_ERROR_ITEM_NOT_FOUND as
-    // a return value, all other values are handled as errors. Any other errors
-    // should be passed through Parameter 2b to be handled by the command
-    // specific part of the driver.
-    if (Status == TEE_ERROR_SHORT_BUFFER) {
-        Params[2].value.b = TEE_ERROR_SHORT_BUFFER;
-        Status = TEE_SUCCESS;
-    } else {
-        Params[2].value.b = Status;
-    }
+    // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
+    // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
+    // are handled as errors. Return values are also passed  back through
+    // parameter 2b to be handled by the command specific part of the driver.
+    Params[2].value.b = Status;
 
     return Status;
 }
@@ -562,7 +559,7 @@ static TEE_Result fTPM_AuthVar_Set(
     // Validate parameter types
     // TODO: Right now we're ignoring the output value (param[2]).
     if (ParamTypes != ExpectedTypes) {
-        IMSG("fTPM_AuthVar_Get: bad param types");
+        DMSG("fTPM_AuthVar_Get: bad param types");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -574,6 +571,8 @@ static TEE_Result fTPM_AuthVar_Set(
     
     // Call VarOps
     Status = SetVariable(SetParamSize, SetParam);
+
+    DMSG("Status: 0x%x", Status);
 
     Params[2].value.a = 0;
     Params[2].value.b = Status;
@@ -622,6 +621,12 @@ static TEE_Result fTPM_AuthVar_Query(
 
     // Call VarOps
     Status = QueryVariableInfo(QueryParamSize, QueryParam, QueryResultSize, QueryResult);
+
+    // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
+    // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
+    // are handled as errors. Return values are also passed  back through
+    // parameter 2b to be handled by the command specific part of the driver.
+    Params[2].value.b = Status;
 
     return Status;
 }

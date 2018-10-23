@@ -85,6 +85,7 @@ typedef struct _UEFI_VARIABLE
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
 
 // AuthVar state in fTPM Admin data
+// TODO split states of fTPM and auth var, see init code
 typedef struct _AUTHVAR_STATE
 {
     UINT32  NvEnd;          // Offset to first byte beyond AuthVar NV data
