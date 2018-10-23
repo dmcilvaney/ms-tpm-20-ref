@@ -88,17 +88,8 @@ CONST SECUREBOOT_VARIABLE_INFO SecurebootVariableInfo[] =
 };
 
 //
-// Auth functions
+// Prototypes
 //
-
-
-static
-TEE_Result
-CheckSignatureListSanity(
-    EFI_SIGNATURE_LIST* SignatureList,
-    PBYTE SignatureListEnd,
-    PUINT32 NumberOfEntries
-);
 
 static
 TEE_Result
@@ -110,6 +101,26 @@ ValidateParameters(
     PBYTE       *ActualData,        // OUT
     UINT32      *ActualDataSize,    // OUT
     EFI_TIME    *EfiTime            // OUT
+);
+
+static
+TEE_Result
+SecureBootVarAuth(
+    SECUREBOOT_VARIABLE Id,         // IN
+    PBYTE AuthenticationData,       // IN
+    UINT32 AuthenticationDataSize,  // IN
+    PBYTE Data,                     // IN
+    UINT32 DataSize,                // IN
+    PBYTE DataToVerify,             // IN
+    UINT32 DataToVerifySize         // IN
+);
+
+static
+TEE_Result
+CheckSignatureListSanity(
+    EFI_SIGNATURE_LIST* SignatureList,
+    PBYTE SignatureListEnd,
+    PUINT32 NumberOfEntries
 );
 
 static
@@ -134,17 +145,9 @@ IdentifySecurebootVariable(
     PSECUREBOOT_VARIABLE Id     // OUT
 );
 
-static
-TEE_Result
-SecureBootVarAuth(
-    SECUREBOOT_VARIABLE Id,         // IN
-    PBYTE AuthenticationData,       // IN
-    UINT32 AuthenticationDataSize,  // IN
-    PBYTE Data,                     // IN
-    UINT32 DataSize,                // IN
-    PBYTE DataToVerify,             // IN
-    UINT32 DataToVerifySize         // IN
-);
+//
+// Auth functions
+//
 
 static
 TEE_Result
@@ -488,7 +491,7 @@ Cleanup:
     {
         for (i = 0; i < (count1 + count2); i++)
         {
-            TREE_Free(certs[i].Data);
+            TEE_Free(certs[i].Data);
         }
         TEE_Free(certs);
     }
@@ -838,8 +841,8 @@ AuthenticateSetVariable(
         goto Cleanup;
     }
 
-    // Calculate data-to-verify size 
-    // REVISIT: Verify this
+    // Calculate data-to-verify size                       sizeof(Attributes)!
+    // REVISIT: Verify this                                     \/\/\/
     dataToVerifySize = UnicodeName->Length + sizeof(GUID) + sizeof(UINT32) + sizeof(EFI_TIME) + dataSize;
 
     // Integer overflow check.
@@ -1090,7 +1093,160 @@ SecureBootVarAuth(
            - The serialized stream of the UEFI variable info + payload data.
 --*/
 {
-    return TEE_SUCCESS;
+    PDATA_BLOB certs = NULL;
+    ULONG numberOfCerts = 0, i;
+    SECUREBOOT_VARIABLE var2 = SecureBootVariableEnd;
+    BOOLEAN verifyStatus = FALSE;
+    UINT8   *signerCerts = NULL;
+    UINT8   *rootCert = NULL;
+    UINT32  rootCertSize;
+    UINT32  signerCertStackSize;
+    TEE_Result status;
+
+    if ((Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX))
+    {
+        var2 = SecureBootVariableKEK;
+    }
+
+    // TODO: ADD ASSERT ON Id CHECK
+    // ASSERT((Id == SecureBootVariablePK) || (Id == SecureBootVariableKEK) ||
+    //     (Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX));
+
+    //
+    // Perform signature validation and check if we trust the signing certificate
+    //
+    if (SecureBootInUserMode)
+    {
+        status = PopulateCerts(SecureBootVariablePK, var2, &certs, (PUINT32)&numberOfCerts);
+        if (status != TEE_SUCCESS)
+        {
+            goto Cleanup;
+        }
+
+        if (certs == NULL)
+        {
+            status = TEE_ERROR_ACCESS_DENIED;
+            goto Cleanup;
+        }
+
+        // Iterate through all the certs to find one that verifys OK.
+        for (i = 0; i < numberOfCerts; i++)
+        {
+//            PKCS7   pkcs7;
+//
+//            // Assume failure
+//            status = TEE_ERROR_BAD_PARAMETERS;
+//            verifyStatus = FALSE;
+//
+//            if (wc_PKCS7_Init(&pkcs7, NULL, 0)) // TODO: SWITCH TO INVALID_DEVID
+//            {
+//                goto Cleanup;
+//            }
+//
+//            if (wc_PKCS7_InitWithCert(&pkcs7, certs[i].Data, certs[i].DataSize))
+//            {
+//                goto Cleanup;
+//            }
+//
+//            if (wc_PKCS7_VerifySignedData(&pkcs7, AuthenticationData, AuthenticationDataSize))
+//            {
+//                continue;
+//            }
+//            else
+//            {
+//                verifyStatus = TRUE;
+//                break;
+//            }
+//            
+//            // Verify Pkcs7 AuthenticationData via Pkcs7Verify library.
+//            verifyStatus = Pkcs7Verify(
+//                AuthenticationData,
+//                AuthenticationDataSize,
+//                certs[i].Data,
+//                certs[i].DataSize,
+//                DataToVerify,
+//                DataToVerifySize);
+//
+//            if (verifyStatus)
+//            {
+//                break;
+//            }
+        }
+
+        if (!verifyStatus)
+        {
+            status = TEE_ERROR_ACCESS_DENIED;
+            goto Cleanup;
+        }
+    }
+
+    //
+    // If in setup mode, only PK needs to be signed by its corresponding PKpriv
+    //
+    // The provisioning code in EDK2 does not populate any AuthenticationData
+    // along with the certificate (see CreateTimeBasedPayload).
+    //
+    else if (Id == SecureBootVariablePK)
+    {
+        //
+        // In this mode the PK is expected to have been self-signed.
+        // First, get signer's certificates from PK variable data.
+        //
+        // NOTE: This code snippet is taken from EDK2 VerifyTimeBasedPayload as is.
+        //
+//        verifyStatus = Pkcs7GetSigners(
+//            AuthenticationData,
+//            AuthenticationDataSize,
+//            &signerCerts,
+//            &signerCertStackSize,
+//            &rootCert,
+//            &rootCertSize);
+//
+//        if (!verifyStatus)
+//        {
+//            status = TEE_ERROR_ACCESS_DENIED;
+//            goto Cleanup;
+//        }
+//
+//        // Second, Verify Pkcs7 AuthenticationData via Pkcs7Verify library.
+//        verifyStatus = Pkcs7Verify(
+//            AuthenticationData,
+//            AuthenticationDataSize,
+//            rootCert,
+//            rootCertSize,
+//            DataToVerify,
+//            DataToVerifySize);
+//
+//        if (!verifyStatus)
+//        {
+//            status = TEE_ERROR_ACCESS_DENIED;
+//            goto Cleanup;
+//        }
+    }
+    else
+    {
+        // REVISIT: PASSED BY DEFAULT
+    }
+
+Cleanup:
+    for (i = 0; i < numberOfCerts; i++)
+    {
+        TEE_Free(certs[i].Data);
+    }
+
+    TEE_Free(certs);
+
+    if (signerCerts != NULL)
+    {
+        TEE_Free(signerCerts);
+    }
+
+    if (rootCert != NULL)
+    {
+        TEE_Free(rootCert);
+    }
+
+    return status;
 }
 
 static
