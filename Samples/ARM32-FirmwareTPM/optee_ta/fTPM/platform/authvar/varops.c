@@ -120,12 +120,12 @@ GetVariable(
     //TODO: What is this test checking?
 
     // Guard against overflow with name string
-    if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) ||
-        (GetParam < (sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
+    if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) &&
+        (GetParam < (INT_PTR)(sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
         DMSG("get");
-        //status = TEE_ERROR_BAD_PARAMETERS;
-        //goto Cleanup;
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
     }
 
     // Retreive (name, guid)

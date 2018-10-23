@@ -181,7 +181,7 @@
 #define MAX_NV_INDEX_SIZE               2048
 #define MAX_NV_BUFFER_SIZE              1024
 #define MAX_CAP_BUFFER                  1024
-#define NV_MEMORY_SIZE                  0x4000
+#define NV_MEMORY_SIZE                  16384
 #define MIN_COUNTER_INDICES             8
 #define NUM_STATIC_PCR                  16
 #define MAX_ALG_LIST_SIZE               64

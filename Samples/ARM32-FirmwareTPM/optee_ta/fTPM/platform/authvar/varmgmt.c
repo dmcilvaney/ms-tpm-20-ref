@@ -325,6 +325,7 @@ SearchList(
                 *Var = (PUEFI_VARIABLE)cur;
                 *VarType = VarInfo[i].Type;
                 //TODO: Why do we not break out early here?
+                break;
             }
 
             cur = cur->Flink;
