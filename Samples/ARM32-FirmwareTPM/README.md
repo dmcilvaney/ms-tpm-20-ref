@@ -1,7 +1,7 @@
 MS-IoT fTPM
 ===========
 ## Trusted firmware for Windows based AArch32 (32-bit) ARM SoC's
-Please see the [build-firmware document](https://github.com/ms-iot/project-kayla/blob/develop/Documentation/build-firmware.md) in Project-Kayla (**UPDATE**) for additional information on including this TA in an IoTCore image.
+Please see the [build-firmware document](https://github.com/ms-iot/imx-iotcore/blob/develop/Documentation/build-firmware.md) in the iMX IoT Core repo for additional information on including this TA in an IoT Core image for iMX boards.
 
 ## Included TAs
 
@@ -15,9 +15,9 @@ See the reference implementation for more details.
 
 ## Extra Installation Steps
 
-The secure firmware utilizes the OpTEE implementation of the Global Platform specifications. The OpTEE project is
-not duplicated in this repository but is obtained directly from the public release. The build of OpTEE is based on a
-native Linux build however the following installation steps allow OpTEE to be built under Windows using WSL. Only the optee_os
+The secure firmware utilizes the OP-TEE implementation of the Global Platform specifications. The OP-TEE project is
+not duplicated in this repository but is obtained directly from the public release. The build of OP-TEE is based on a
+native Linux build, however the following installation steps allow OP-TEE to be built under Windows using WSL. Only the optee_os
 repository is relevant for trusted firmware use - the optee_client & optee_linuxdriver repositories are integration
 components for Linux and can serve as a reference for the Windows equivalent components. Note that optee_linuxdriver
 is GPL.
@@ -48,15 +48,13 @@ rm gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf.tar.xz
 ```
 
 #### 4. Clone the OpTEE OS source code
-If you do not already have a version of the ms-iot OpTEE OS repo cloned on your machine you may run:
+If you do not already have a version of the OP-TEE OS repo cloned on your machine you may run:
 ```sh
 cd ~
-git clone https://github.com/ms-iot/optee_os.git
+git clone https://github.com/ms-iot/ms-iot-optee_os.git
 ```
- (**UPDATE**)
 
-#### 5. Build OpTEE OS for the target platform
-If using Project-Kayla, the flags should match those used to build the OpTEE binary included in the firmware. (**UPDATE**)
+#### 5. Build OP-TEE OS for the target platform
 
 `TA_CROSS_COMPILE` should point to the ARM toolchain installed in [step 3](#3-install-the-arm-tool-chain).
 
@@ -64,7 +62,7 @@ If using Project-Kayla, the flags should match those used to build the OpTEE bin
 cd ~/optee_os
 CROSS_COMPILE=~/gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf- make PLATFORM=imx-mx6qhmbedge CFG_TEE_CORE_LOG_LEVEL=4 CFG_REE_FS=n CFG_RPMB_FS=y CFG_RPMB_TESTKEY=y CFG_RPMB_WRITE_KEY=y -j20
 ```
-Additional information on ms-iot OpTEE OS can be found [here]( https://github.com/ms-iot/optee_os). (**UPDATE**)
+Additional information on Microsoft IoT fork of OP-TEE OS can be found [here](https://github.com/ms-iot/ms-iot-optee_os).
 
 #### 6. Clone the ms-tpm-20-ref source code
 ```sh
