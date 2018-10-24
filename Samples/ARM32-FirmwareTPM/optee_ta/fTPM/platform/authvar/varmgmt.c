@@ -615,6 +615,7 @@ RetrieveVariable(
 
     DMSG("ret");
     DMSG("Getting value from 0x%x", (uint32_t)Var);
+    DMSG("We can store 0x%x bytes back", ResultBufLen);
 
     // Detect integer overflow
     if (((UINT32)ResultBuf + ResultBufLen) < (UINT32)ResultBuf)
@@ -814,7 +815,8 @@ AppendVariable(
         }
 
         // Find the end of the chain
-        lastVar = varPtr = Var;
+        lastVar = Var;
+        varPtr = Var;
         DMSG("LastVar next offset = 0x%x", lastVar->NextOffset);
         while (lastVar->NextOffset)
         {
@@ -822,7 +824,7 @@ AppendVariable(
             // Find last two data entries
             varPtr = lastVar;
             lastVar = (PUEFI_VARIABLE)(lastVar->BaseAddress + lastVar->NextOffset);
-            DMSG("lastVar @ 0x%x, varPtr @ 0x%x,");
+            DMSG("lastVar @ 0x%x, varPtr @ 0x%x,",(INT_PTR)lastVar, (INT_PTR)varPtr);
         }
 
         //TODO: We can just append to the last remaining variable if its at the end of memory?
@@ -836,18 +838,19 @@ AppendVariable(
             DMSG("Adjacent, try to merge");
             // Yes, init pointer to appended data destination
             DMSG("vp:0x%x, do:0x%x, ds: 0x%x", varPtr->BaseAddress, varPtr->DataOffset, varPtr->DataSize);
+            DMSG("lv:0x%x, as:0x%x, end of previous data: 0x%x",lastVar->BaseAddress, lastVar->AllocSize, (INT_PTR)apndData);
             apndData = varPtr->BaseAddress + varPtr->DataOffset + varPtr->DataSize;
+
+            // How much size is there between the end of the penultimate element's data, and the
+            // end of the space allocated for the last element.
+            availableSize = (lastVar->BaseAddress + lastVar->AllocSize) - (INT_PTR)apndData;
+            apndSize = MIN(availableSize, DataSize);
 
             // Mark the last element as unused
             memmove(&lastVar->VendorGuid, &GUID_NULL, sizeof(GUID));
             memset(&lastVar->Attributes, 0, sizeof(lastVar->Attributes));
             varPtr->NextOffset = NULL;
 
-            // How much size is there between the end of the penultimate element's data, and the
-            // end of the space allocated for the last element.
-            DMSG("lv:0x%x, as:0x%x, end of previous data: 0x%x",lastVar->BaseAddress, lastVar->AllocSize, (INT_PTR)apndData);
-            availableSize = (lastVar->BaseAddress + lastVar->AllocSize) - (INT_PTR)apndData;
-            apndSize = MIN(availableSize, DataSize);
 
             DMSG("We can append 0x%x bytes by merging, and we will use 0x%x", availableSize, apndSize);
 
@@ -892,7 +895,7 @@ AppendVariable(
             apndData = (PBYTE)(newVar->BaseAddress + sizeof(UEFI_VARIABLE));
 
             newVar->DataOffset = (INT_PTR)apndData - newVar->BaseAddress;
-            DMSG("Updating tail pointer in newVar to point to 0x%x (0x%x)", newVar->DataOffset + newVar->BaseAddress, newVar->DataOffset);
+            DMSG("Updating data pointer in newVar to point to 0x%x (0x%x)", newVar->DataOffset + newVar->BaseAddress, newVar->DataOffset);
 
             // Copy data
             memmove(apndData, Data, DataSize);
@@ -965,7 +968,7 @@ ReplaceVariable(
 --*/
 {
     PBYTE srcPtr;
-    PUEFI_VARIABLE dstPtr;
+    PUEFI_VARIABLE dstPtr, varPtr;
     INT_PTR nextOffset, limit;
     UINT32 length, canFit, remaining;
     TEE_Result  status = TEE_SUCCESS;
@@ -1055,34 +1058,35 @@ ReplaceVariable(
     srcPtr = Data;
     remaining = DataSize;
     limit = (INT_PTR)Data + DataSize;
+    varPtr = Var;
 
     DMSG("Want to replace with %d bytes of new data", remaining);
 
     // Do the copy (across appended data entries if necessary)
     do {
         // Determine available space to copy to in the current variable
-        canFit = Var->AllocSize - Var->DataOffset;
+        canFit = varPtr->AllocSize - varPtr->DataOffset;
         DMSG("WE can fit %d bytes into the current variable", canFit);
         // Length is either the size of this entry or our remaining byte count
         length = MIN(canFit, remaining);
 
         DMSG("Moving %d bytes into the existing variable", length);
 
-        memmove((PBYTE)(Var->BaseAddress + Var->DataOffset), srcPtr, length);
-        DMSG("Stomping over 0x%x ot 0x%x", (Var->BaseAddress + Var->DataOffset),(Var->BaseAddress + Var->DataOffset) + length - 1);
-        Var->DataSize = length;
+        memmove((PBYTE)(varPtr->BaseAddress + varPtr->DataOffset), srcPtr, length);
+        DMSG("Stomping over 0x%x ot 0x%x", (varPtr->BaseAddress + varPtr->DataOffset),(varPtr->BaseAddress + varPtr->DataOffset) + length - 1);
+        varPtr->DataSize = length;
 
         // Adjust remaining and source pointer
         remaining -= length;
         srcPtr += length;
 
         // Pickup offset to next set of appended data (may be zero)
-        nextOffset = Var->NextOffset;
+        nextOffset = varPtr->NextOffset;
 
         if(nextOffset) {
             DMSG("Continuing on to next element");
             // Calculate pointer to next set of appended data
-            Var = (PUEFI_VARIABLE)(Var->BaseAddress + nextOffset);
+            varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + nextOffset);
         }
 
         // Loop if we have another entry and we haven't written DataSize bytes yet
@@ -1117,7 +1121,7 @@ ReplaceVariable(
             // because we 'replaced' the variable data with a smaller data size.
             // Clean up the excess appended data entries now. If there is a nextOffset
             // Var will already point to the next element in the list.
-            status = DeleteVariable(Var, VarType, Attributes);
+            status = DeleteVariable(varPtr, VarType, Attributes);
             _plat__NvCommit();
             Var->NextOffset = NULL;
         }
