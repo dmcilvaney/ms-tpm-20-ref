@@ -640,7 +640,9 @@ RetrieveVariable(
 
     if (ResultBufLen < (size + sizeof(VARIABLE_GET_RESULT)))
     {
+        DMSG("Short buffer");
         status = TEE_ERROR_SHORT_BUFFER;
+        ResultBuf->DataSize = size;
         goto Cleanup;
     }
 
@@ -681,6 +683,7 @@ Cleanup:
     if (BytesWritten) // or needed..
     {
         *BytesWritten = size + sizeof(VARIABLE_GET_RESULT);
+        DMSG("Required buffer size is 0x%x bytes", *BytesWritten);
     }
 
     return status;
@@ -1001,7 +1004,7 @@ ReplaceVariable(
     if (!(Attributes.NonVolatile))
     {
         // Yes. Make sure varialbe doesn't indicate APPEND_WRITE.
-        if (!(Attributes.AppendWrite))
+        if ((Attributes.AppendWrite))
         {
             DMSG("replace error");
             status = TEE_ERROR_BAD_PARAMETERS;

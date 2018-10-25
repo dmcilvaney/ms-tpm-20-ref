@@ -153,12 +153,14 @@ GetVariable(
     DMSG("Retrieving variable");
 
     // Yes, go get it.
-    RetrieveVariable(varPtr, GetResult, *GetResultSize, NULL);
-    *GetResultSize = GetResult->DataSize;
-
-    DMSG("Retrieved up to %d bytes into 0x%x", *GetResultSize, GetResult);
+    status = RetrieveVariable(varPtr, GetResult, *GetResultSize, GetResultSize);
+    if(status == TEE_ERROR_SHORT_BUFFER) {
+        DMSG("Short buffer, need %d bytes", *GetResultSize, GetResult);
+    } else {
+        DMSG("Retrieved up to %d bytes into 0x%x", *GetResultSize, GetResult);
+    }
+    
     DHEXDUMP(GetResult->Data, GetResult->DataSize);
-    status = TEE_SUCCESS;
 
 Cleanup:
     DMSG("Done get");
@@ -458,11 +460,12 @@ SetVariable(
     // Yes
     if (varPtr != NULL)
     {
+        DMSG("Found an existing variable");
+        DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%x", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
         // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE
         if (((attrib.Flags) ^ (varPtr->Attributes.Flags)) & ~(EFI_VARIABLE_APPEND_WRITE))
         {
             DMSG("set");
-            DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%x", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
             return TEE_ERROR_BAD_PARAMETERS;
         }
 
@@ -478,6 +481,7 @@ SetVariable(
         // If this is an existing authenticated variable, perform security check
         if (varPtr->Attributes.TimeBasedAuth)
         {
+            DMSG("Set: TimeBasedAuth");
             status = AuthenticateSetVariable(
                 &unicodeName,
                 &vendorGuid,
@@ -506,7 +510,7 @@ SetVariable(
         if (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES) ||
             (dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES))
         {
-            DMSG("set");
+            DMSG("set delete");
             status = DeleteVariable(varPtr, varType, attrib);
             goto Cleanup;
         }
@@ -514,7 +518,7 @@ SetVariable(
         // Is this an append operation?
         if (attrib.AppendWrite)
         {
-            DMSG("Append");
+            DMSG("set Append");
             status = AppendVariable(
                 varPtr,
                 varType,
