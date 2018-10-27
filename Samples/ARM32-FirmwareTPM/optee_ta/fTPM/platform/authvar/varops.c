@@ -84,7 +84,7 @@ GetVariable(
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
     {
-        DMSG("get");
+        EMSG("Get variable bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -92,7 +92,7 @@ GetVariable(
     // Request validation
     if (!(GetResultSize) || (GetParam->Size != sizeof(VARIABLE_GET_PARAM)))
     {
-        DMSG("get");
+        EMSG("Get variable bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -100,7 +100,7 @@ GetVariable(
     // Size of result buffer
     if (*GetResultSize < sizeof(VARIABLE_GET_RESULT))
     {
-        DMSG("get");
+        DMSG("Get variable short buffer");
         DMSG("value is %d, we need at least %d", *GetResultSize, sizeof(VARIABLE_GET_RESULT));
         DMSG("Caller has requested %d",GetResult->Size);
         status = TEE_ERROR_SHORT_BUFFER;
@@ -110,7 +110,7 @@ GetVariable(
     // Validation of var name size
     if ((GetParam->NameSize) <= 0)// || (GetParam->NameSize % sizeof(WCHAR)))
     {
-        DMSG("get");
+        EMSG("Get variable bad parameters");
         DMSG("name size %d", (uint32_t)GetParam->NameSize);
         DMSG("Need to be multiple of %d",  sizeof(WCHAR));
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -123,7 +123,7 @@ GetVariable(
     if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) &&
         (GetParam < (INT_PTR)(sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
-        DMSG("get");
+        EMSG("Get variable bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -209,6 +209,7 @@ GetNextVariableName(
     // Validate parameters
     if (!(GetNextParam) || !(GetNextResult) || (GetNextParamSize < sizeof(VARIABLE_GET_NEXT_PARAM)))
     {
+        EMSG("Get next variable bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -216,6 +217,7 @@ GetNextVariableName(
     // Request validation
     if (!(GetNextResultSize) || (GetNextParam->Size != sizeof(VARIABLE_GET_NEXT_PARAM)))
     {
+        EMSG("Get next variable bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -272,7 +274,7 @@ GetNextVariableName(
         if (((varNameLen + sizeof(VARIABLE_GET_NEXT_PARAM)) < varNameLen) ||
             (GetNextParamSize < (sizeof(VARIABLE_GET_NEXT_PARAM) + varNameLen)))
         {
-
+            EMSG("Get next variable bad parameters");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
@@ -372,7 +374,7 @@ SetVariable(
     UINT32 offsetLimit, totalSize;
     VARTYPE varType;
     ATTRIBUTES attrib;
-    BOOLEAN duplicateFound;
+    BOOLEAN duplicateFound, isDeleteOperation;
 
     DMSG("set");
 
@@ -381,7 +383,7 @@ SetVariable(
         || (SetParamSize < sizeof(VARIABLE_SET_PARAM))
         || (SetParam->Size != sizeof(VARIABLE_SET_PARAM)))
     {
-        DMSG("set");
+        EMSG("Set variable bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -398,21 +400,21 @@ SetVariable(
         || (SetParam->OffsetName + varNameSize > offsetLimit)
         || (SetParam->OffsetData + dataSize > offsetLimit))
     {
-        DMSG("set");
+        EMSG("Set variable bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // We expect the name of the variable before the data (if provided)
     if ((SetParam->DataSize) && (SetParam->OffsetName > SetParam->OffsetData))
     {
-        DMSG("set");
+        EMSG("Set variable bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // Alignment check on variable name offset
     if (SetParam->OffsetName % sizeof(WCHAR))
     {
-        DMSG("set");
+        EMSG("Set variable bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -433,19 +435,19 @@ SetVariable(
     // Attribute validation
     if ((attrib.Flags & (~EFI_KNOWN_ATTRIBUTES)) != 0)
     {
-        DMSG("set");
+        EMSG("Set variable bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite && attrib.TimeBasedAuth)
     {
-        DMSG("set");
+        EMSG("Set variable bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite || attrib.HwErrorRec)
     {
-        DMSG("set");
+        EMSG("Set variable NO AUTH");
         return TEE_ERROR_NOT_IMPLEMENTED;
     }
 
@@ -457,15 +459,24 @@ SetVariable(
 
     DMSG("varPtr: 0x%x, flags: 0x%x", varPtr, attrib.Flags);
 
+    // Set() on a variable causes deletion when:
+    //   1. Setting a data variable with no access attributes
+    //   2. dataSize is zero unless write attribute(s) set
+    isDeleteOperation = (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES) ||
+        (dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES));
+    DMSG("Delete operation? %d, 0x%x (ds: 0x%x, AA:0x%x && WA:0x%x)", isDeleteOperation, attrib.Flags, EFI_ACCESS_ATTRIBUTES, EFI_WRITE_ATTRIBUTES);
+
     // Yes
     if (varPtr != NULL)
     {
         DMSG("Found an existing variable");
         DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%x", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
-        // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE
-        if (((attrib.Flags) ^ (varPtr->Attributes.Flags)) & ~(EFI_VARIABLE_APPEND_WRITE))
+        // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE unless we are deleting
+        // the variable.
+        if ( !isDeleteOperation &&
+            (((attrib.Flags) ^ (varPtr->Attributes.Flags)) & ~(EFI_VARIABLE_APPEND_WRITE)))
         {
-            DMSG("set");
+            EMSG("Set variable bad parameters");
             return TEE_ERROR_BAD_PARAMETERS;
         }
 
@@ -504,13 +515,10 @@ SetVariable(
             dataSize = contentSize;
         }
 
-        // Set() on a variable causes deletion when:
-        //   1. Setting a data variable with no access attributes
-        //   2. dataSize is zero unless write attribute(s) set
-        if (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES) ||
-            (dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES))
+        if (isDeleteOperation)
         {
             DMSG("set delete");
+            RemoveEntryList((PLIST_ENTRY) varPtr);
             status = DeleteVariable(varPtr, varType, attrib);
             goto Cleanup;
         }
@@ -549,16 +557,17 @@ SetVariable(
         }
 
         // If this case is not covered then one or more parameters are invalid.
+        EMSG("Set variable bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         DMSG("set");
         goto Cleanup;
     }
 
     // Variable doesn't already exist. Are we attempting deletion?
-    if ((dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES))
+    if ((dataSize == 0) && isDeleteOperation)
     {
         status = TEE_ERROR_ITEM_NOT_FOUND;
-        DMSG("set");
+        DMSG("Attempted deletion of non-existing variable.");
         goto Cleanup;
     }
 
@@ -609,6 +618,7 @@ SetVariable(
         // REVISIT: Implement volatile authenticated variables only if needed.
         if (attrib.TimeBasedAuth)
         {
+            EMSG("Set variable NO AUTH");
             status = TEE_ERROR_NOT_IMPLEMENTED;
             goto Cleanup;
         }
@@ -623,7 +633,7 @@ SetVariable(
         DMSG("set");
         goto Cleanup;
     }
-    DMSG("set");
+    EMSG("Set variable bad parameters");
     // If this case is not covered then one or more parameters are invalid.
     status = TEE_ERROR_BAD_PARAMETERS;
     goto Cleanup;

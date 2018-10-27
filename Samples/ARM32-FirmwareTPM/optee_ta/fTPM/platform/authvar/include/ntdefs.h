@@ -395,3 +395,19 @@ RemoveTailList(
     PrevEntry->Flink = ListHead;
     return Entry;
 }
+
+FORCEINLINE
+BOOLEAN
+RemoveEntryList(
+    PLIST_ENTRY Entry
+)
+{
+    PLIST_ENTRY Blink;
+    PLIST_ENTRY Flink;
+
+    Flink = Entry->Flink;
+    Blink = Entry->Blink;
+    Blink->Flink = Flink;
+    Flink->Blink = Blink;
+    return (BOOLEAN)(Flink == Blink);
+}
