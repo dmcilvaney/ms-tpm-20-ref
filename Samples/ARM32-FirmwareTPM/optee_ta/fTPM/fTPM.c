@@ -680,7 +680,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void      *sess_ctx,
         case TA_FTPM_EXIT_BOOT_SERVICES: {
             // TODO: DO WE CARE ABOUT PARAMS HERE?
             fTPMIsRuntime = true;
-            return;
+            return TEE_SUCCESS;
         }
 
         default: {
