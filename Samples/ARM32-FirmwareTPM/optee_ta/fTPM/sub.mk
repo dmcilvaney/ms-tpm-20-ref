@@ -29,6 +29,7 @@ global-incdirs-y += include
 global-incdirs-y += reference/include
 global-incdirs-y += platform/include
 global-incdirs-y += platform/authvar/include
+global-incdirs-y += lib/tpm/tpm_symlink/TPMCmd/tpm/include
 
 srcs-y += platform/AdminPPI.c
 srcs-y += platform/Cancel.c
