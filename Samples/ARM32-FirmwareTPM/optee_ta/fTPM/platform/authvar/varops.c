@@ -149,9 +149,9 @@ GetVariable(
     // Yes, go get it.
     status = RetrieveVariable(varPtr, GetResult, *GetResultSize, GetResultSize);
     if(status == TEE_ERROR_SHORT_BUFFER) {
-        DMSG("Short buffer, need %d bytes", *GetResultSize, GetResult);
+        DMSG("Short buffer, need 0x%x bytes", *GetResultSize);
     } else {
-        DMSG("Retrieved up to %d bytes into 0x%x", *GetResultSize, GetResult);
+        DMSG("Retrieved up to 0x%x bytes into 0x%x", *GetResultSize, GetResult);
     }
     
 Cleanup:
@@ -322,7 +322,7 @@ GetNextVariableName(
     DHEXDUMP(nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
     if (size > *GetNextResultSize)
     {
-        DMSG("Short buffer");
+        DMSG("Short buffer, need 0x%x bytes", *GetNextResultSize);
         *GetNextResultSize = size;
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;

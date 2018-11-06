@@ -272,8 +272,7 @@ static TEE_Result fTPM_Submit_Command(uint32_t  param_types,
                                                TEE_PARAM_TYPE_NONE,
                                                TEE_PARAM_TYPE_NONE);
 
-    DMSG("submit");   
-
+    DMSG("fTPM submit command"); 
     // Validate parameter types
     if (param_types != exp_param_types) {
 #ifdef fTPMDebug
@@ -292,7 +291,7 @@ static TEE_Result fTPM_Submit_Command(uint32_t  param_types,
 #endif
         return TEE_ERROR_BAD_PARAMETERS;
     }
-DMSG("submit");  
+    
     // Copy command locally
     memcpy(fTPMCommand, params[0].memref.buffer, params[0].memref.size);
 
@@ -300,21 +299,17 @@ DMSG("submit");
     // field descibes the buffer containing the command, not the command.
     cmdBuf = fTPMCommand;
     cmdLen = BYTE_ARRAY_TO_UINT32((uint8_t *)&(cmdBuf[2]));
-DMSG("submit");  
     // Sanity check cmd length included in TPM command
     if (cmdLen > params[0].memref.size) {
         return TEE_ERROR_BAD_PARAMETERS;
     }
-DMSG("submit");  
     respBuf = (uint8_t *)(params[1].memref.buffer);
     respLen = params[1].memref.size;
-DMSG("submit");  
     // Check if this is a PPI Command
     if (!_admin__PPICommand(cmdLen, cmdBuf, &respLen, &respBuf)) {
         // If not, pass through to TPM
         ExecuteCommand(cmdLen, cmdBuf, &respLen, &respBuf);
     }
-DMSG("submit");  
     // Unfortunately, this cannot be done until after we have our response in
     // hand. We will, however, make an effort to return at least a portion of
     // the response along with TEE_ERROR_SHORT_BUFFER.
@@ -324,8 +319,7 @@ DMSG("submit");
         IMSG("Insufficient buffer length RS: 0x%x > BL: 0x%x\n", respLen, params[1].memref.size);
 #endif
         return TEE_ERROR_SHORT_BUFFER;
-    }
-DMSG("submit");  
+    } 
 #ifdef fTPMDebug
     DMSG("Success, RS: 0x%x\n", respLen);
 #endif
