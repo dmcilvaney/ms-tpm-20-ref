@@ -47,7 +47,7 @@ TEE_Result
 GetVariable(
     UINT32               GetParamSize,  // IN
     VARIABLE_GET_PARAM  *GetParam,      // IN
-    UINT32              *GetResultSize,  // INOUT
+    UINT32              *GetResultSize, // INOUT
     VARIABLE_GET_RESULT *GetResult      // OUT
 )
 /*++
@@ -79,7 +79,7 @@ GetVariable(
     UNICODE_STRING unicodeName;
     TEE_Result status = TEE_SUCCESS;
 
-    DMSG("get");
+    DMSG("Begin Get");
 
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
@@ -92,7 +92,7 @@ GetVariable(
     // Request validation
     if (!(GetResultSize) || (GetParam->Size != sizeof(VARIABLE_GET_PARAM)))
     {
-        EMSG("Get variable bad parameters");
+        EMSG("Get variable bad parameters (size)");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -101,29 +101,23 @@ GetVariable(
     if (*GetResultSize < sizeof(VARIABLE_GET_RESULT))
     {
         DMSG("Get variable short buffer");
-        DMSG("value is %d, we need at least %d", *GetResultSize, sizeof(VARIABLE_GET_RESULT));
-        DMSG("Caller has requested %d",GetResult->Size);
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
 
     // Validation of var name size
-    if ((GetParam->NameSize) <= 0)// || (GetParam->NameSize % sizeof(WCHAR)))
+    if (((GetParam->NameSize) = 0) || (GetParam->NameSize % sizeof(WCHAR)))
     {
-        EMSG("Get variable bad parameters");
-        DMSG("name size %d", (uint32_t)GetParam->NameSize);
-        DMSG("Need to be multiple of %d",  sizeof(WCHAR));
+        DMSG("Bad name size %d, or not multiple of %d", (uint32_t)GetParam->NameSize, sizeof(WCHAR));
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
-
-    //TODO: What is this test checking?
 
     // Guard against overflow with name string
     if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) &&
         (GetParam < (INT_PTR)(sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
-        EMSG("Get variable bad parameters");
+        DMSG("Overflow on name string length");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -146,7 +140,7 @@ GetVariable(
     {
         // No.
         status = TEE_ERROR_ITEM_NOT_FOUND;
-        DMSG("Get: not found");
+        DMSG("Get: Variable not found");
         goto Cleanup;
     }
 
@@ -160,8 +154,6 @@ GetVariable(
         DMSG("Retrieved up to %d bytes into 0x%x", *GetResultSize, GetResult);
     }
     
-    DHEXDUMP(GetResult->Data, GetResult->DataSize);
-
 Cleanup:
     DMSG("Done get");
     return status;

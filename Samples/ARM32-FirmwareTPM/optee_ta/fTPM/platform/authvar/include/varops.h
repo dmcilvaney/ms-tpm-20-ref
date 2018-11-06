@@ -74,40 +74,21 @@ typedef struct _UEFI_VARIABLE
     ATTRIBUTES Attributes;      // UEFI variable attributes
     USHORT NameSize;            // Length of var name in bytes
     INT_PTR NameOffset;         // Offset to var name from BaseAddress
-    UINT32 AllocSize;           // Total size of this var entry
+    UINT32 AllocSize;           // Total size of this variable entry
     UINT32 ExtAttribSize;       // Size of extended attributes (auth only)
-    INT_PTR ExtAttribOffset;    // Offset to extended attributes (auth only) from BaseAddress
-    UINT32 DataSize;            // Size of var data in this section
+    INT_PTR ExtAttribOffset;    // Offset to extended attributes (auth only)
+    UINT32 DataSize;            // Size of data in this entry
     INT_PTR DataOffset;         // Offset to var data from BaseAddress
-    INT_PTR NextOffset;         // NV Only: Offset to appended data (or zero) from BaseAddress
-    INT_PTR BaseAddress;        // Address which offsets are relative to, zero if volatile
+    INT_PTR BaseAddress;        // NV Only: Base addr for offsets
+    INT_PTR NextOffset;         // NV Only: Offset to appended data (or zero)
 } UEFI_VARIABLE, *PUEFI_VARIABLE;
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
 
-// AuthVar state in fTPM Admin data
-// TODO split states of fTPM and auth var, see init code
+// AuthVar state in TA Admin data
 typedef struct _AUTHVAR_STATE
 {
-    UINT32  NvEnd;          // Offset to first byte beyond AuthVar NV data
+    UINT32  NvEnd;  // Offset to first byte beyond AuthVar NV data
 } NV_AUTHVAR_STATE, *PNV_AUTHVAR_STATE;
-
-//// UEFI Variable Structure
-//typedef struct _UEFI_VARIABLE
-//{
-//    LIST_ENTRY List;        // Flink/Blink
-//    GUID VendorGuid;        // Associated GUID
-//    ATTRIBUTES Attributes;  // UEFI variable attributes
-//    USHORT NameSize;        // Length of var name
-//    PWSTR Name;             // Offset/ptr to var name
-//    UINT32 Size;            // Size of variable data
-//    UINT32 AllocSize;       // NV Only: Allocated (i.e., maximum) size
-//    UINT32 StartOffset;     // NV Only: Starting offset in NV
-//    UINT32 Next;            // NV Only: Offset to NV_LINK'ed data (or zero)
-//    PBYTE Data;             // Pointer to in-memory variable data
-//    PEXTENDED_ATTRIBUTES ExtendedAttributes;    // Auth only
-//} UEFI_VARIABLE, *PUEFI_VARIABLE;
-//typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
-
 
 // Struct for Get and GetNextVariable operations (REVISIT: Member ordering)
 typedef struct _VARIABLE_GET_PARAM
@@ -119,7 +100,6 @@ typedef struct _VARIABLE_GET_PARAM
 } VARIABLE_GET_PARAM, VARIABLE_GET_NEXT_PARAM, VARIABLE_GET_NEXT_RESULT, *PVARIABLE_GET_PARAM;
 typedef struct _VARIABLE_GET_PARAM *PVARIABLE_GET_NEXT_PARAM, *PVARIABLE_GET_NEXT_RESULT;
 
-
 // Result struct for Get operation
 typedef struct _VARIABLE_GET_RESULT
 {
@@ -128,7 +108,6 @@ typedef struct _VARIABLE_GET_RESULT
     UINT32 DataSize;        // Size of variable data
     BYTE Data[1];           // Variable data
 } VARIABLE_GET_RESULT, *PVARIABLE_GET_RESULT;
-
 
 // Parameter Struct for Set Operations. No data returned in result!
 typedef struct _VARIABLE_SET_PARAM
@@ -143,14 +122,12 @@ typedef struct _VARIABLE_SET_PARAM
     BYTE Payload[1];        // Start of "payload", indexed by offsets
 } VARIABLE_SET_PARAM, *PVARIABLE_SET_PARAM; // Immediately followed by name and data
 
-
 // Parameter struct for Query
 typedef struct _VARIABLE_QUERY_PARAM
 {
     UINT32 Size;            // Size of query param
     ATTRIBUTES Attributes;  // Associated UEFI variable attributes
 } VARIABLE_QUERY_PARAM, *PVARIABLE_QUERY_PARAM;
-
 
 // Query Response
 typedef struct _VARIABLE_QUERY_RESULT
@@ -160,7 +137,6 @@ typedef struct _VARIABLE_QUERY_RESULT
     UINT64 RemainingVariableStorageSize;
     UINT64 MaximumVariableSize;
 } VARIABLE_QUERY_RESULT, *PVARIABLE_QUERY_RESULT;
-
 
 // UEFI variable types
 typedef enum _VARTYPE
@@ -183,7 +159,6 @@ typedef enum _VARTYPE
     // Signify end of enum. Equals number of types.
     VTYPE_END,
 } VARTYPE, *PVARTYPE;
-
 
 // Structure for variable storage
 typedef struct _VSVARTYPEINFO

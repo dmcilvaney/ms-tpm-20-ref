@@ -120,9 +120,6 @@ extern unsigned char s_locality;
 
 extern unsigned char     s_NV[];
 extern BOOL              s_NvIsAvailable;
-extern BOOL              s_NV_unrecoverable;
-extern BOOL              s_NV_recoverable;
-
 
 // For PPPlat.c
 // Physical presence.  It is initialized to FALSE

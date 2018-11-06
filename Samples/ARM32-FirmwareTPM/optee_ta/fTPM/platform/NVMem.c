@@ -112,7 +112,6 @@ static const UINT32 firmwareV2 = FIRMWARE_V2;
 //
 static UINT64 s_chipRevision = 0;
 
-
 VOID
 _plat__NvInitFromStorage()
 {
@@ -144,7 +143,7 @@ _plat__NvInitFromStorage()
 		// Form storage object ID for this block.
 		objID = s_StorageObjectID + i;
 
-		DMSG("fTPM:Opening memory block %d of %d", i, NV_BLOCK_COUNT);
+		DMSG("fTPM:Opening block %d of %d", i, NV_BLOCK_COUNT);
 
 		// Attempt to open TEE persistent storage object.
 		Result = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE,
@@ -158,9 +157,7 @@ _plat__NvInitFromStorage()
 
 			// There was an error, fail the init, NVEnable can retry.
 			if (Result != TEE_ERROR_ITEM_NOT_FOUND) {
-#ifdef fTPMDebug
 				DMSG("fTPM: Failed to open fTPM storage object %d", i);
-#endif
 				goto Error;
 			}
 
@@ -178,9 +175,7 @@ _plat__NvInitFromStorage()
 
 			// There was an error, fail the init, NVEnable can retry.
 			if (Result != TEE_SUCCESS) {
-#ifdef fTPMDebug
 				DMSG("Failed to create fTPM storage object");
-#endif
 				goto Error;
 			}
 
@@ -193,12 +188,11 @@ _plat__NvInitFromStorage()
 			// Need to re-initialize
 			initialized = FALSE;
 
-#ifdef fTPMDebug
 			IMSG("Created fTPM storage object, i: 0x%x, s: 0x%x, id: 0x%x, h:0x%x\n",
 				i, NV_BLOCK_SIZE, objID, s_NVStore[i]);
-#endif
 		}
-		else {
+		else
+        {
 			DMSG("fTPM: block %d loaded!", i);
 			// Successful open, now read fTPM storage object.
 			Result = TEE_ReadObjectData(s_NVStore[i],
@@ -208,16 +202,12 @@ _plat__NvInitFromStorage()
 
 			// Give up on failed or incomplete reads.
 			if ((Result != TEE_SUCCESS) || (bytesRead != NV_BLOCK_SIZE)) {
-#ifdef fTPMDebug
 				DMSG("Failed to read fTPM storage object");
-#endif
 				goto Error;
 			}
 
-#ifdef fTPMDebug
-			IMSG("Read fTPM storage object, i: 0x%x, s: 0x%x, id: 0x%x, h:0x%x\n",
+			DMSG("Read fTPM storage object, i: 0x%x, s: 0x%x, id: 0x%x, h:0x%x\n",
 				i, bytesRead, objID, s_NVStore[i]);
-#endif
 		}
 	}
 
@@ -235,9 +225,7 @@ _plat__NvInitFromStorage()
 		s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
 		*(UINT64*)&(s_NV[NV_CHIP_REVISION_OFFSET]) = s_chipRevision;
 
-#ifdef fTPMDebug
-		DMSG("Failed to validate revision.");
-#endif
+		DMSG("Failed to validate revision. Did we just (re)-init storage?");
 
 		// Force (re)manufacture.
 		s_NVChipFileNeedsManufacture = TRUE;
@@ -276,10 +264,6 @@ _plat__NvWriteBack()
 	if ((!s_dirty) || (!s_NVInitialized)) {
 		return;
 	}
-
-#ifdef fTPMDebug
-	DMSG("bMap[0]: 0x%x\n", s_blockMap[0]);
-#endif
 
 	// Write dirty blocks.
     for (i = 0; i < NV_BLOCK_COUNT; i++) {
@@ -335,9 +319,7 @@ _plat__NvWriteBack()
 
 Error:
 	// Error path.
-#ifdef fTPMDebug
-	DMSG("NV write back failed");
-#endif
+	DMSG("NV writeback failed, closing storage.");
 	s_NVInitialized = FALSE;
 	for (i = 0; i < NV_BLOCK_COUNT; i++) {
 		if (IS_VALID(s_NVStore[i])) {
@@ -351,18 +333,22 @@ Error:
 
 LIB_EXPORT int
 _plat__NVInitAuthVar(
-    bool authvarClear
+    void
 )
 {
-	DMSG("Init authvar");
+    NV_AUTHVAR_STATE authVarState;
 
-	if(authvarClear) {
-		NV_AUTHVAR_STATE authVarState;
-		authVarState.NvEnd = (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE);
-		_admin__SaveAuthVarState(&authVarState);
-	}
+    DMSG("Init authvar");
 
-    return(AuthVarInitStorage((NV_MEMORY_SIZE + NV_TPM_STATE_SIZE), s_NV));
+    // If we are re-manufacturing, reset AuthVar storage.
+    if (_plat__NvNeedsManufacture())
+    {
+        DMSG("(Re-)Initing AuthVars.");
+        authVarState.NvEnd = NV_MEMORY_SIZE + NV_TPM_STATE_SIZE;
+        _admin__SaveAuthVarState(&authVarState);
+    }
+
+    return(AuthVarInitStorage((NV_MEMORY_SIZE + NV_TPM_STATE_SIZE)));
 }
 
 
@@ -405,7 +391,7 @@ _plat__NVEnable(
         return 0;
     }
 
-	DMSG("s_NV is at 0x%x and is size 0x%x",(uint32_t)s_NV, NV_TOTAL_MEMORY_SIZE);
+	DMSG("s_NV is at 0x%x and is size 0x%x", (uint32_t)s_NV, NV_TOTAL_MEMORY_SIZE);
 
 	// Clear NV
     memset(s_NV, 0, NV_TOTAL_MEMORY_SIZE);

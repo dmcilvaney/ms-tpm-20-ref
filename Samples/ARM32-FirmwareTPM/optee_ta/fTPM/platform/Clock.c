@@ -98,7 +98,6 @@ _plat__TimerRestart(
 // appropriated hardware functions.
 
 #include <time.h>
-TEE_Time     debugTime;
 
 //*** _plat__RealTime()
 // This is another, probably futile, attempt to define a portable function 
@@ -169,7 +168,6 @@ _plat__TimerRead(
     if(s_lastSystemTime == 0)
     {
         s_lastSystemTime = timeNow;
-        TEE_GetSystemTime(&debugTime);
         s_lastReportedTime = 0;
         s_realTimePrevious = 0;
     }

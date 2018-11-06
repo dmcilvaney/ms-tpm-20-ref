@@ -193,7 +193,7 @@ WrapPkcs7Data(
 
 {
     UINT8 mOidValue[9] = { 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02 };
-    PUINT8 signedData;
+    UINT8 *signedData;
     BOOLEAN wrapped = FALSE;
 
     // Determine whether input P7Data is a wrapped ContentInfo structure
@@ -213,7 +213,7 @@ WrapPkcs7Data(
     {
         *WrapData = (UINT8 *)P7Data;
         *WrapDataSize = P7Length;
-        *WrapFlag = Wrapped;
+        *WrapFlag = wrapped;
         return TRUE;
     }
 
@@ -223,7 +223,7 @@ WrapPkcs7Data(
     if (*WrapData == NULL)
     {
         // Unable to alloc buffer
-        *WrapFlag = Wrapped;
+        *WrapFlag = wrapped;
         return FALSE;
     }
 
@@ -250,7 +250,7 @@ WrapPkcs7Data(
     //
     // Part4: OID value -- 0x2A 0x86 0x48 0x86 0xF7 0x0D 0x01 0x07 0x02.
     //
-    memcpy(SignedData + 6, mOidValue, sizeof(mOidValue));
+    memcpy(signedData + 6, mOidValue, sizeof(mOidValue));
 
     //
     // Part5: 0xA0, 0x82.
@@ -269,7 +269,7 @@ WrapPkcs7Data(
     //
     memcpy(signedData + 19, P7Data, P7Length);
 
-    *WrapFlag = Wrapped;
+    *WrapFlag = wrapped;
     return TRUE;
 }
 
@@ -335,7 +335,7 @@ Pkcs7Verify(
     // Wrap PKCS7 data, if necessary
     if (!WrapPkcs7Data(P7Data, P7Length, &wrapped, &signedData, &signedDataSize))
     {
-        retval = FALSE;
+        retVal = FALSE;
         goto Cleanup;
     }
 

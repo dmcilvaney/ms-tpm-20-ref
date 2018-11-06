@@ -36,7 +36,6 @@
 #ifndef _COMBINEDNVMEMORY_H
 #define _COMBINEDNVMEMORY_H
 
-
 #include <PlatformData.h>
 #define ROUNDUP(x, y)			((((x) + (y) - 1) / (y)) * (y))
 

@@ -125,12 +125,6 @@ TEE_Result TA_CreateEntryPoint(void)
     uint32_t respLen;
     uint8_t *respBuf;
 
-    bool authvarClear = false;
-
-#ifdef fTPMDebug
-    DMSG("Entry Point\n");
-#endif
-
     // If we've been here before, don't init again.
     if (fTPMInitialized) {
         // We may have had TA_DestroyEntryPoint called but we didn't 
@@ -149,18 +143,11 @@ TEE_Result TA_CreateEntryPoint(void)
         TEE_Panic(TEE_ERROR_BAD_STATE);
     }
 
-#ifdef fTPMDebug
-    DMSG("NVEnable Complete\n");
-#endif
-
     // This only occurs when there is no previous NV state, i.e., on first
     // boot, after recovering from data loss, we reset the platform, etc.
     if (_plat__NvNeedsManufacture()) {
-#ifdef fTPMDebug
         DMSG("TPM_Manufacture\n");
-#endif
         TPM_Manufacture(1);
-        authvarClear = true;
     }
 
     // "Power-On" the platform
@@ -168,10 +155,6 @@ TEE_Result TA_CreateEntryPoint(void)
 
     // Internal init for reference implementation
     _TPM_Init();
-
-#ifdef fTPMDebug
-    DMSG("Init Complete\n");
-#endif
 
     // Startup with state
     if (g_chipFlags.fields.TpmStatePresent) {
@@ -185,16 +168,8 @@ TEE_Result TA_CreateEntryPoint(void)
             goto AuthVars;
         }
 
-#ifdef fTPMDebug
-        DMSG("Fall through to startup clear\n");
-#endif
-
         goto Clear;
     }
-
-#ifdef fTPMDebug
-    DMSG("No TPM state present\n");
-#endif
 
 Clear:
     // Re-use request buffer for response (ignored)
@@ -210,7 +185,7 @@ AuthVars:
     _admin__SaveChipFlags();
 
     // TPM Init is done, now do AuthVars
-    if (_plat__NVInitAuthVar(authvarClear) == 0) {
+    if (_plat__NVInitAuthVar() == 0) {
         TEE_Panic(TEE_ERROR_BAD_STATE);
     }
 
@@ -438,23 +413,19 @@ static TEE_Result fTPM_AuthVar_Get(
     uint32_t    ExpectedTypes;
     TEE_Result  Status;
 
-    DMSG("AV cmd");
-
     ExpectedTypes = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,
         TEE_PARAM_TYPE_MEMREF_OUTPUT,
         TEE_PARAM_TYPE_VALUE_OUTPUT,
         TEE_PARAM_TYPE_NONE);
 
+    // TODO: Check that we're init'ed first
+
     // Validate parameter types
-    // TODO: Right now we're ignoring the output value (param[2]).
-    DMSG("AV cmd");
     if (ParamTypes != ExpectedTypes) {
-        IMSG("fTPM_AuthVar_Get: bad param types");
+        DMSG("fTPM_AuthVar_Get: bad param types");
         return TEE_ERROR_BAD_PARAMETERS;
     }
-
-    DMSG("AV cmd");
 
     // REVISIT: Validate parameters here or in GetVariable?
     GetParam = (VARIABLE_GET_PARAM *)Params[0].memref.buffer;
@@ -463,20 +434,15 @@ static TEE_Result fTPM_AuthVar_Get(
     GetResult = (VARIABLE_GET_RESULT *)Params[1].memref.buffer;
     GetResultSize = Params[1].memref.size;
 
-    // TODO: Check that we're init'ed first
-
     // Call VarOps
-    DMSG("AV cmd");
     Status = GetVariable(GetParamSize, GetParam, &GetResultSize, GetResult);
-
-    DMSG("Get result size is 0x%x", GetResultSize);
-
-    Params[2].value.a = GetResultSize;
+    DMSG("Get result 0x%x size: 0x%x", Status, GetResultSize);
 
     // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
     // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
-    // are handled as errors. Return values are also passed  back through
+    // are handled as errors. Return values are also passed back through
     // parameter 2b to be handled by the command specific part of the driver.
+    Params[2].value.a = GetResultSize;
     Params[2].value.b = Status;
 
     return Status;
@@ -680,7 +646,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void      *sess_ctx,
         case TA_FTPM_EXIT_BOOT_SERVICES: {
             // TODO: DO WE CARE ABOUT PARAMS HERE?
             fTPMIsRuntime = true;
-            return;
+            return TEE_SUCCESS;
         }
 
         default: {

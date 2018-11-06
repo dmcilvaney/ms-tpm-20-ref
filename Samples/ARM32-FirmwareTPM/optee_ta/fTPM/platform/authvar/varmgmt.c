@@ -127,8 +127,7 @@ IsSecureBootVar(
 
 UINT32
 AuthVarInitStorage(
-    UINT32 StartingOffset,
-    PVOID NvPtr
+    UINT32 StartingOffset
 )
 /*++
 
@@ -139,8 +138,6 @@ AuthVarInitStorage(
     Arguments:
 
         StartingOffset - Offset from 0 of first byte of AuthVar NV storage
-
-        NvPtr - Pointer to in-memory NV store for this TA
 
     Returns:
 
@@ -160,20 +157,14 @@ AuthVarInitStorage(
     BOOLEAN collapseList;
 
     // Sanity check on storage offset
-    if (StartingOffset != s_nextFree)
+    if ((StartingOffset != s_nextFree) || !(s_NV))
     {
-        //TODO TEE_Panic()
+        // REVISIT: TEE_Panic()?
         return 0;
     }
 
-    // Init for read
-    if ((pVar = (PUEFI_VARIABLE)NvPtr) == NULL)
-    {
-        return 0;
-    }
-
-    // At this point we have read all of NV from storage and we are now
-    // in _plat__NVEnable. We now need to traverse our in-memory NV (NvPtr)
+    // At this point we have read all of NV from storage and we are now in
+    // TA_CreateEntryPoint. We now need to traverse our in-memory NV (s_NV)
     // and add pointers to each UEFI_VARIABLE (that isn't just a container for
     // appended data) to the appropriate in-memory variable list.
 
@@ -182,36 +173,41 @@ AuthVarInitStorage(
     // be set appropriately when added to the in-memory list(s).
 
     // Get our Admin state and sanity check ending offset
-    DMSG("var");
     _admin__RestoreAuthVarState(&authVarState);
-    DMSG("var");
     DMSG("nextFree/NvEnd:%x, size:%x", authVarState.NvEnd, NV_AUTHVAR_SIZE);
     if (!((s_nextFree = authVarState.NvEnd) < NV_AUTHVAR_SIZE))
     {
-        DMSG("Sanity check failed");
+        DMSG("FAILED: Inconsistent nextFree/NvEnd.");
         return 0;
     }
 
+    // Init in-memory lists
     for (i = 0; i < VTYPE_END; i++) {
         InitializeListHead(&(VarInfo[i].Head));
         DMSG("Head %d address is 0x%x", i, (uint32_t)&VarInfo[i].Head);
         DMSG("Head f:%x, Head b:%x", (uint32_t)VarInfo[i].Head.Flink, (uint32_t)VarInfo[i].Head.Blink);
     }
     
-
+    // Is our storage empty (i.e., we have no saved vars)?
     if (s_nextFree == StartingOffset) {
-        DMSG("First run, we are fine");
-        NV_AUTHVAR_STATE authVarState;
+        DMSG("First run, storage initialized.");
+
+        // All we're doing here right now is saving our end-offset, as we
+        // get more sophisticated in AuthVars, this is where we would write
+        // any other initial AuthVar state.
 		authVarState.NvEnd = s_nextFree;
 		_admin__SaveAuthVarState(&authVarState);
         return 1;
     }
 
+    // Init ptr to start of AuthVar storage
+    pVar = (PUEFI_VARIABLE)(s_NV + StartingOffset);
+
     do {
         // Init before gettype
         pVar->BaseAddress = (INT_PTR)pVar;
         guid = (PCGUID)&(pVar->VendorGuid);
-        name = (PCWSTR)((pVar->NameOffset) + pVar->BaseAddress);
+        name = (PCWSTR)(pVar->BaseAddress + pVar->NameOffset);
 
         // Get type for this var, if not deleted or appended data entry
         if (GetVariableType(name, guid, pVar->Attributes, &varType))
@@ -221,11 +217,11 @@ AuthVarInitStorage(
         }
         else
         {
-            // Appended entry or deleted data? If deleted then close this gap
+            // Appended entry or deleted data? If deleted then close this gap.
             if (!memcmp(guid, &GUID_NULL, sizeof(GUID)))
             {
                 // Calculate offsets for move
-                INT_PTR curOffset = (pVar->BaseAddress - (INT_PTR)NvPtr);
+                INT_PTR curOffset = (pVar->BaseAddress - (INT_PTR)s_NV);
                 INT_PTR srcOffset = curOffset + pVar->AllocSize;
                 INT_PTR dstOffset = curOffset;
                 UINT32 curLen, size;
@@ -234,8 +230,7 @@ AuthVarInitStorage(
                 pVar = (PUEFI_VARIABLE)srcOffset;
                 curOffset = srcOffset;
 
-                // Peek ahead and check if we can remove multiple deleted variables
-                // in one pass.
+                // Peek ahead and check if we can remove multiple deleted variables in one pass
                 while ((curOffset < s_nextFree) && memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)))
                 {
                     // Accumulate size for move
@@ -247,22 +242,22 @@ AuthVarInitStorage(
                     pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + curLen);
                 }
 
-                // Close the gap and move the remainder of the data forward.
+                // Close the gap
                 size = s_nextFree - srcOffset;
                 _plat__NvMemoryMove(srcOffset, dstOffset, size);
                 s_nextFree -= size;
 
                 // Reset pVar for next iteration
-                pVar = (PUEFI_VARIABLE)((INT_PTR)NvPtr + dstOffset);
+                pVar = (PUEFI_VARIABLE)((INT_PTR)s_NV + dstOffset);
             }
         }
 
         // Compute pointer to next var
         pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->AllocSize);
-        DMSG("Doing %x is less than %x",((INT_PTR)pVar - (INT_PTR)NvPtr),s_nextFree);
-    } while (((INT_PTR)pVar - (INT_PTR)NvPtr) < s_nextFree);
+        DMSG("Doing %x is less than %x", ((INT_PTR)pVar - (INT_PTR)s_NV), s_nextFree);
+    } while (((INT_PTR)pVar - (INT_PTR)s_NV) < s_nextFree);
 
-    // No need to commit NV changes to disk now, wait until actual data has been modified.
+    // No need to commit NV changes to disk now, wait until data has been modified.
     return 1;
 }
 
@@ -303,7 +298,6 @@ SearchList(
     // Validate parameters
     if (!(UnicodeName) || !(VendorGuid) || !(Var) || !(VarType))
     {
-        //DMSG("search parameter failed!");
         return;
     }
 
@@ -314,29 +308,27 @@ SearchList(
     {
         PLIST_ENTRY head = &VarInfo[i].Head;
         PLIST_ENTRY cur = head->Flink;
-        //DMSG("Seraching type %d", i);
-        //DMSG("Head:%x, cur:%x", head, cur);
 
         while ((cur) && (cur != head))
         {
-            //DMSG("Comparing");
             if (CompareEntries(UnicodeName, VendorGuid, (PUEFI_VARIABLE)cur))
             {
                 *Var = (PUEFI_VARIABLE)cur;
                 *VarType = VarInfo[i].Type;
-                //TODO: Why do we not break out early here?
                 break;
             }
 
             cur = cur->Flink;
         }
     }
-    //DMSG("Done compare");
+
+    // TODO: REMOVE
     if(*Var) {
-        DMSG("Found a match");
+        DMSG("Found match");
     } else {
         DMSG("No match");
     }
+
     return;
 }
 
