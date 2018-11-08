@@ -127,6 +127,37 @@ IsSecureBootVar(
 // Auth Var Storage Maintenance Functions
 //
 
+/**
+ * Memory Management:
+ * 
+ * When a variable is deleted or shrunk it will leave gaps. These gaps
+ * are cleared during initialization.
+ * 
+ * Each node has an actual size, and an allocated size (alligned). The
+ * NV backed byte array (s_NV) is iterated through to find each block.
+ * 
+ * A variable's data may be spread across multiple blocks via a linked
+ * list. This list is formed by relative offset values in each block.
+ * 
+ * For each block:
+ *      - Is the space used smaller than the allocated space (not less
+ *          than min alignment)?
+ *      - Has the variable been deleted?
+ *      - If yes to either then find the next variable, skipping over
+ *          deleted variables along the way.
+ *      - Move the next (non-deleted) block forward into the free space.
+ *      - Increase the allocation size of that block so there is no
+ *          gap left. When the block is processed that gap will be
+ *          closed.
+ *      - If the current block has a NextOffset link to another node
+ *          in a list:
+ *              - Keep track of the current node so the offset can be
+ *                  updated if the next node is moved forwards.
+ *      - Check the list of tracked blocks to see if any were linked
+ *          to the next block, if so update the link and remove them
+ *          from the list.
+ */
+
 #if (TRACE_LEVEL < TRACE_DEBUG)
 #define DumpAuthvarMemory()   (void)0
 #else
