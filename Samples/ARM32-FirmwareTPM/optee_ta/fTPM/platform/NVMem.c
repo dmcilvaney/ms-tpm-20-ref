@@ -295,6 +295,7 @@ _plat__NvWriteBack()
 			}
 
 			// Write out this block.
+			DMSG("Writing block at 0x%x back", &(s_NV[i * NV_BLOCK_SIZE]));
             Result = TEE_WriteObjectData(s_NVStore[i],
 									     (void *)&(s_NV[i * NV_BLOCK_SIZE]),
                                          NV_BLOCK_SIZE);
@@ -541,6 +542,8 @@ _plat__MarkDirtyBlocks (
 	unsigned int blockEnd;
 	unsigned int blockStart;	
     unsigned int i, j, k;
+
+	pAssert(startOffset + size <= NV_TOTAL_MEMORY_SIZE);
 	
 	//
 	// Integer math will round down to the start of the block.

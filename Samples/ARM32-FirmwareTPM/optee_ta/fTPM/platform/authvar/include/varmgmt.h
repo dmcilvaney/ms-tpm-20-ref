@@ -34,6 +34,14 @@
 #pragma once
 #include <varops.h>
 
+// UEFI Variable Structure
+typedef struct _MEMORY_RECLAMATION_NODE
+{
+    LIST_ENTRY List;            // Flink/Blink
+    PUEFI_VARIABLE pVar;        // UEFI Variable node
+    INT_PTR NV_Offset;          // The offset into NV being tracked
+} MEMORY_RECLAMATION_NODE, *PMEMORY_RECLAMATION_NODE;
+
 VOID
 SearchList(
     PCUNICODE_STRING     UnicodeName,

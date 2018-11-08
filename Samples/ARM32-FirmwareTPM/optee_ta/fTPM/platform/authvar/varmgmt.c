@@ -82,6 +82,8 @@ VTYPE_INFO VarInfo[VTYPE_END] =
     }
 };
 
+LIST_ENTRY MemoryReclamationList = {0};
+
 //
 // Offsets/ptrs for NV vriable storage
 //
@@ -122,8 +124,283 @@ IsSecureBootVar(
 );
 
 //
-// Auth Var Mgmt Functions
+// Auth Var Storage Maintenance Functions
 //
+
+#if (TRACE_LEVEL < TRACE_DEBUG)
+#define DumpAuthvarMemory()   (void)0
+#else
+#define DumpAuthvarMemory()   DumpAuthvarMemoryImpl()
+#endif
+
+VOID
+DumpAuthvarMemoryImpl()
+{
+    PUEFI_VARIABLE pVar = (PUEFI_VARIABLE)&(s_NV[NV_AUTHVAR_START]);
+    PUEFI_VARIABLE pLinkVar;
+    char *del = "DEL";
+    char *val = "VAL";
+    char *type;
+    char *link = "LNK";
+    char *nolink = "   ";
+    char *linked;
+    int mainCounter = 0, linkCounter;
+    uint32_t linkBitArray[NV_AUTHVAR_SIZE/sizeof(UEFI_VARIABLE)] = {0};
+
+
+    DMSG("================================");
+    DMSG("Start of Authvar Memory at  0x%x:", (INT_PTR)s_NV);
+    while (((INT_PTR)pVar - (INT_PTR)s_NV) < s_nextFree) {
+        mainCounter++;
+        linkCounter = 0;
+        if (pVar->NextOffset) {
+            pLinkVar = pVar;
+            linkCounter = mainCounter;
+            //DMSG("Searching for link (0x%x)", pVar->NextOffset);
+            // Run through the list until we find our node, keeping track of numbering on the way
+            // Note: pVar->BaseAddress may not have been updated yet, use actual address.
+            //DMSG("Goal: 0x%x, Current: 0x%x",(INT_PTR)pVar + pVar->NextOffset, (INT_PTR)pLinkVar);
+            while((INT_PTR)pLinkVar != (INT_PTR)pVar + pVar->NextOffset) {
+                linkCounter++;
+                pLinkVar = (PUEFI_VARIABLE)((INT_PTR)pLinkVar + pLinkVar->AllocSize);
+            }
+            linkBitArray[linkCounter/32] |= (1 << (linkCounter % 32));
+        }
+
+        //Check if variable has been deleted
+        type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  val : del);
+        //Check if its a link variable
+        linked = (linkBitArray[mainCounter/32] & (1 << (mainCounter % 32)) ? link : nolink);
+
+        DMSG("%s-0x%x(+0x%x):    (#%d:%s,Link:%d)", linked, pVar->AllocSize, (INT_PTR)pVar, mainCounter, type, linkCounter);
+        pVar = (PUEFI_VARIABLE)((INT_PTR)pVar + pVar->AllocSize);
+    }
+    DMSG("End of Authvar Memory");
+    DMSG("================================");
+}
+
+VOID
+UpdateOffsets(
+    INT_PTR NVOffset,
+    INT_PTR ShrinkAmount
+)
+/*++
+
+    Routeine Description:
+
+        Updates any link to the node at NVOffset such that it will now
+        point to NVOffset-ShrinkAmount
+
+        Removes any nodes which will no longer be affected by subsequent
+        changes to the layout.
+
+    Arguments:
+
+        CurrentNVOffset - Offset of the current variable.
+        
+        ShrinkAmount - How much the stored variables have been shrunk
+--*/
+{
+    PLIST_ENTRY head = &MemoryReclamationList;
+    PLIST_ENTRY cur = head->Flink;
+    PMEMORY_RECLAMATION_NODE node;
+
+    DMSG("Updating nodes which point to 0x%X, shrink:0x%x)", NVOffset, ShrinkAmount);
+
+    while ((cur) && (cur != head)) {
+        node = (PMEMORY_RECLAMATION_NODE)cur;
+        DMSG("Node offset: 0x%x", node->NV_Offset);
+        if(node->NV_Offset == NVOffset) {
+            // No longer need to track this node
+            DMSG("Done with the node at 0x%x", (INT_PTR)node->pVar);
+            DMSG("Offset was 0x%x, now its 0x%x", node->NV_Offset, node->NV_Offset - ShrinkAmount);
+            DMSG("(0x%x -> 0x%x)", node->NV_Offset + (INT_PTR)s_NV, node->NV_Offset - ShrinkAmount + (INT_PTR)s_NV);
+            node->pVar->NextOffset -= ShrinkAmount;
+            RemoveEntryList(cur);
+            cur = cur->Flink;
+            TEE_Free(node);
+        } else {
+            cur = cur->Flink;
+        }
+    }
+}
+
+/*VOID
+UpdateNode(
+    PUEFI_VARIABLE OldVar,
+    PUEFI_VARIABLE NewVar
+)
+// Update pVar's node if it gets moved.
+{
+    PLIST_ENTRY head = &MemoryReclamationList;
+    PLIST_ENTRY cur = head->Flink;
+    PMEMORY_RECLAMATION_NODE node;
+
+    while ((cur) && (cur != head)) {
+        node = (PMEMORY_RECLAMATION_NODE)cur;
+        if( node->pVar == OldVar ) {
+            DMSG("Updating 0x%x to point to 0x%x", (INT_PTR)OldVar, (INT_PTR)NewVar);
+            node->pVar = NewVar;
+        }
+        cur = cur->Flink;
+    }
+}*/
+
+UINT32
+TrackOffset(
+    PUEFI_VARIABLE pVar
+)
+/*++
+
+    Routine Description:
+
+        Track this variable so any changes to the memory
+        layout may be reflected in its NextOffset value.
+
+    Arguments:
+
+        pVar - Variable to track
+
+    Returns:
+
+        0 - Success
+
+        1 - Failure
+
+--*/
+{
+    DMSG("Tracking a variable");
+    PMEMORY_RECLAMATION_NODE newNode = TEE_Malloc(sizeof(MEMORY_RECLAMATION_NODE), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+    if (!newNode) {
+        return 1;
+    }
+
+    newNode->pVar = pVar;
+    newNode->NV_Offset = (INT_PTR)pVar + pVar->NextOffset - (INT_PTR)s_NV;
+    InsertTailList(&MemoryReclamationList, &(newNode->List));
+    return 0;
+}
+
+BOOLEAN
+ReclaimVariable(
+    PUEFI_VARIABLE pVar,
+    PVOID NvPtr
+)
+/*++
+
+    Routine Description:
+
+        Memory reclamation for AuthVar storage. Shrinks or
+        removes a variable if it has been deleted or had its
+        data reduced. Moves the next variable in memory to remove
+        gaps while increasing its allocated size. A subsequent call
+        to ReclaimMemory on that variable will similarrly attempt
+        to reclaim that wasted space.
+
+        Maintains a list of nodes which may need to have their offsets
+        updated and will udpate them as needed.
+
+    Arguments:
+
+        pVar - Pointer to the variable to shrink/remove
+        
+        NvPtr - Pointer to NvMemory
+
+    Returns:
+
+        TRUE - Variable was deleted
+
+        FALSE - Variable was either left as is, or shrunk
+--*/
+{
+    UINT32 newVariableSize, wastedSpace, newAlloc, shrinkAmmount, deleteAmmount;
+    PUEFI_VARIABLE nextVar;
+    BOOLEAN wasDeleted = FALSE;
+
+    DMSG("Reclaiming memory at 0x%x\n", (INT_PTR)pVar);
+
+    // Check if the variable has been deleted
+    if(!memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID))) {
+        DMSG("Deleted variable!");
+        newVariableSize = 0;
+        wasDeleted = TRUE;
+    } else {
+        DMSG("Offset:0x%x, Size:0x%x", pVar->DataOffset, pVar->DataSize);
+        newVariableSize = pVar->DataOffset + pVar->DataSize;
+    }
+
+    wastedSpace = pVar->AllocSize - newVariableSize;
+    DMSG("Total size is 0x%x, Wasted space is 0x%x",newVariableSize, wastedSpace);
+
+    // We need to remain alligned, don't reclaim gaps smaller
+    // than our alignment.
+    if (wastedSpace < NV_AUTHVAR_ALIGNMENT) {
+        DMSG("Can't reclaim less than 0x%x", NV_AUTHVAR_ALIGNMENT);
+        return;
+    }
+
+    newAlloc = ROUNDUP(newVariableSize, NV_AUTHVAR_ALIGNMENT);
+    shrinkAmmount = pVar->AllocSize - newAlloc;
+
+    DMSG("We now need 0x%x, 0x%x less than before", newAlloc, shrinkAmmount);
+
+    // Search ahead for the first non-deleted variable, or the end of memory
+    // We may as well colapse multiple variables in one go.
+    nextVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->AllocSize);
+    DMSG("Next variable is at 0x%x", (INT_PTR)nextVar);
+    deleteAmmount = 0;
+    while (((INT_PTR)nextVar - (INT_PTR)s_NV < s_nextFree) &&
+            !memcmp(&(nextVar->VendorGuid), &GUID_NULL, sizeof(GUID))) {
+
+        DMSG("Found deleted variable of size 0x%x", nextVar->AllocSize);
+        deleteAmmount += nextVar->AllocSize;
+        // nextVar's BaseAddress has not been updated yet, use actual address.
+        DMSG("Now checking for another deleted variable at 0x%x",(INT_PTR)nextVar);
+        nextVar = (PUEFI_VARIABLE)((INT_PTR)nextVar + nextVar->AllocSize);
+    }
+
+    pVar->AllocSize -= shrinkAmmount;
+
+    // No need to move data at the end of storage, just colapse the end pointer
+    if((INT_PTR)nextVar - (INT_PTR)s_NV >= s_nextFree) {
+        DMSG("Last variable, shrinking s_nextFree by 0x%x", (shrinkAmmount + deleteAmmount));
+        s_nextFree -= (shrinkAmmount + deleteAmmount);
+        DMSG("s_nextFree is now 0x%x (0x%x)", s_nextFree, (INT_PTR)&s_NV[s_nextFree]);
+        
+        PLIST_ENTRY head = &MemoryReclamationList;
+        PLIST_ENTRY cur = head->Flink;
+        if(head != cur) {
+            DMSG("List broken?");
+            for(;;);
+        }
+    } else {
+        // Move the next variable into the extra space, then
+        // expand that variable so it is allocated the entire gap.
+        // This space will be reclaimed in the next call to ReclaimMemory().
+        DMSG("Size of nextVar: 0x%x, distance to move: shrink amount:0x%x + delete ammount:0x%x", nextVar->AllocSize, shrinkAmmount, deleteAmmount);
+        nextVar->AllocSize += shrinkAmmount + deleteAmmount;
+        DMSG("Next var now has alloc size of 0x%x", nextVar->AllocSize);
+
+        // Keeping the internal structure up to date is required to allow
+        // printing of the current memory state.
+        if(nextVar->NextOffset) {
+            nextVar->NextOffset += shrinkAmmount + deleteAmmount;
+        }
+
+        DMSG("Moving offset 0x%x to 0x%x (size=0x%x)", (INT_PTR)nextVar - (INT_PTR)NvPtr, pVar->BaseAddress + pVar->AllocSize - (INT_PTR)NvPtr, nextVar->AllocSize);
+        DMSG("(Address) 0x%x to 0x%x", (INT_PTR)nextVar, pVar->BaseAddress + pVar->AllocSize);
+        _plat__NvMemoryMove((INT_PTR)nextVar - (INT_PTR)NvPtr,
+                            pVar->BaseAddress + pVar->AllocSize - (INT_PTR)NvPtr,
+                            nextVar->AllocSize);
+
+
+        // Update any links which pointed to nextVar, which has been moved to colapse
+        // a gap
+        UpdateOffsets((INT_PTR)nextVar - (INT_PTR)NvPtr, shrinkAmmount + deleteAmmount);
+    }
+
+    return wasDeleted;
+}
 
 UINT32
 AuthVarInitStorage(
@@ -200,6 +477,9 @@ AuthVarInitStorage(
         return 1;
     }
 
+    DumpAuthvarMemory();
+    InitializeListHead(&MemoryReclamationList);
+    
     // Init ptr to start of AuthVar storage
     pVar = (PUEFI_VARIABLE)(s_NV + StartingOffset);
 
@@ -210,56 +490,39 @@ AuthVarInitStorage(
         name = (PCWSTR)(pVar->BaseAddress + pVar->NameOffset);
 
         // Get type for this var, if not deleted or appended data entry
-        if (GetVariableType(name, guid, pVar->Attributes, &varType))
+        if (pVar->NameSize > 0 && GetVariableType(name, guid, pVar->Attributes, &varType))
         {
             // Add pointer to this var to appropriate in-memory list
+            DMSG("Adding variable to lists");
             InsertTailList(&VarInfo[varType].Head, &pVar->List);
-        }
-        else
-        {
-            // Appended entry or deleted data? If deleted then close this gap.
-            if (!memcmp(guid, &GUID_NULL, sizeof(GUID)))
-            {
-                // Calculate offsets for move
-                INT_PTR curOffset = (pVar->BaseAddress - (INT_PTR)s_NV);
-                INT_PTR srcOffset = curOffset + pVar->AllocSize;
-                INT_PTR dstOffset = curOffset;
-                UINT32 curLen, size;
 
-                // Prep for search
-                pVar = (PUEFI_VARIABLE)srcOffset;
-                curOffset = srcOffset;
-
-                // Peek ahead and check if we can remove multiple deleted variables in one pass
-                while ((curOffset < s_nextFree) && memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)))
-                {
-                    // Accumulate size for move
-                    curLen = pVar->AllocSize;
-                    srcOffset += curLen;
-
-                    // Next iteration
-                    curOffset += curLen;
-                    pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + curLen);
-                }
-
-                // Close the gap
-                size = s_nextFree - srcOffset;
-                _plat__NvMemoryMove(srcOffset, dstOffset, size);
-                s_nextFree -= size;
-
-                // Reset pVar for next iteration
-                pVar = (PUEFI_VARIABLE)((INT_PTR)s_NV + dstOffset);
+            // If this variable has multiple components it may be necessary to update
+            // the offsets as memory is reclaimed.
+            DMSG("Var at 0x%x has offset 0x%x", (INT_PTR)pVar, pVar->NextOffset);
+            if (pVar->NextOffset) {
+                TrackOffset(pVar);
             }
         }
 
-        // Compute pointer to next var
-        pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->AllocSize);
-        DMSG("Doing %x is less than %x", ((INT_PTR)pVar - (INT_PTR)s_NV), s_nextFree);
-    } while (((INT_PTR)pVar - (INT_PTR)s_NV) < s_nextFree);
+        // Attempt to reclaim unused memory from the current variable,
+        // then compute pointer to next var. If the current variable was
+        // deleted then the next variable will be in the same place.
+        if (!ReclaimVariable(pVar, NvPtr)) {
+            // Variable was not deleted, move to the next variable
+            pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->AllocSize);
+        }
+
+        DMSG("Do: %x is less than %x?",((INT_PTR)pVar - (INT_PTR)NvPtr),s_nextFree);
+        DumpAuthvarMemory();
+    } while (((INT_PTR)pVar - (INT_PTR)NvPtr) < s_nextFree);
 
     // No need to commit NV changes to disk now, wait until data has been modified.
     return 1;
 }
+
+//
+// Auth Var Mgmt Functions
+//
 
 VOID
 SearchList(
@@ -521,7 +784,7 @@ CreateVariable(
 
         // Size of var structure before any appended data that may come later
         // Make sure all structures are aligned.
-        newVar->AllocSize = ROUNDUP(totalNv, 8);
+        newVar->AllocSize = ROUNDUP(totalNv, NV_AUTHVAR_ALIGNMENT);
         DMSG("create");
         // Extended attributes, if necessary
         if (!extAttribLen)
@@ -547,8 +810,7 @@ CreateVariable(
         newVar->NextOffset = NULL;
         DMSG("create");
         // We've touched NV so, write back.
-        _plat__MarkDirtyBlocks(newVar->BaseAddress, newVar->AllocSize);
-        _plat__NvCommit();
+        _plat__MarkDirtyBlocks(newVar->BaseAddress - (INT_PTR)s_NV, newVar->AllocSize);
 
         DMSG("Updating s_nextFree from 0x%x by incrementing %x (%x)", s_nextFree, newVar->AllocSize, totalNv);
         DMSG("0x%x -> 0x%x", (INT_PTR)s_NV + s_nextFree, (INT_PTR)s_NV + s_nextFree + newVar->AllocSize);
@@ -567,6 +829,7 @@ CreateVariable(
         DMSG("Done insert");
     }
 Cleanup:
+    DumpAuthvarMemory();
     return TEE_SUCCESS;
 }
 
@@ -696,15 +959,21 @@ DeleteVariable(
         TEE_Free(Var);
     } else {
         // First clear any further appended elements.
+        DMSG("Deleting variable at 0x%x", (INT_PTR)Var);
         if(Var->NextOffset) {
+            DMSG("Recursion");
             DeleteVariable((PUEFI_VARIABLE)(Var->BaseAddress + Var->NextOffset),
                             VarType,
                             Attributes);
         }
-        DMSG("Clearing memory at 0x%x (offset 0x%x, + 0x%x)",(INT_PTR)Var->BaseAddress, (Var->BaseAddress) - (INT_PTR)s_NV, Var->AllocSize);
-        _plat__NvMemoryClear((Var->BaseAddress) - (INT_PTR)s_NV, Var->AllocSize);
+        DMSG("Clearing memory at 0x%x (offset 0x%x, + 0x%x)",(INT_PTR)&(Var->VendorGuid), (INT_PTR)&(Var->VendorGuid) - (INT_PTR)s_NV, sizeof(GUID));
+        _plat__NvMemoryWrite((INT_PTR)&(Var->VendorGuid) - (INT_PTR)s_NV, sizeof(GUID), &GUID_NULL);
+        _plat__NvMemoryClear((INT_PTR)&(Var->Attributes.Flags) - (INT_PTR)s_NV, sizeof(Var->Attributes.Flags));
+        DMSG("Deleted GUID:");
+        DHEXDUMP(&(Var->VendorGuid), sizeof(GUID));
     }
 
+    DumpAuthvarMemory();
     return TEE_SUCCESS;
 }
 
@@ -858,11 +1127,11 @@ AppendVariable(
             // Update sizes (we know we're adding to the end of NV data)
             DMSG("varPtr had 0x%x bytes of data", varPtr->DataSize);
             varPtr->DataSize += apndSize;
-            varPtr->AllocSize = ROUNDUP(varPtr->DataOffset + varPtr->DataSize, 8);
+            varPtr->AllocSize = ROUNDUP(varPtr->DataOffset + varPtr->DataSize, NV_AUTHVAR_ALIGNMENT);
             DMSG("varPtr now has 0x%x bytes of data", varPtr->DataSize);
 
             // Update the NV memory
-            _plat__MarkDirtyBlocks(varPtr->BaseAddress, varPtr->AllocSize);
+            _plat__MarkDirtyBlocks(varPtr->BaseAddress - (INT_PTR)s_NV, varPtr->AllocSize);
 
             lastVar = varPtr;
         }
@@ -883,7 +1152,7 @@ AppendVariable(
             newVar->Attributes.Flags = Attributes.Flags;
             newVar->NameSize = 0;
             newVar->NameOffset = 0;
-            newVar->AllocSize = ROUNDUP(sizeof(UEFI_VARIABLE) + DataSize, 8);
+            newVar->AllocSize = ROUNDUP(sizeof(UEFI_VARIABLE) + DataSize, NV_AUTHVAR_ALIGNMENT);
             newVar->ExtAttribSize = 0;
             newVar->ExtAttribOffset = 0;
             newVar->DataSize = DataSize;
@@ -917,7 +1186,7 @@ AppendVariable(
             lastVar->NextOffset = newVar->BaseAddress - lastVar->BaseAddress;
 
             // Update the NV memory
-            _plat__MarkDirtyBlocks(newVar->BaseAddress, newVar->AllocSize);
+            _plat__MarkDirtyBlocks(newVar->BaseAddress - (INT_PTR)s_NV, newVar->AllocSize);
 
             s_nextFree += newVar->AllocSize;
             NV_AUTHVAR_STATE authVarState;
@@ -926,6 +1195,7 @@ AppendVariable(
         }
     }
 Cleanup:
+    DumpAuthvarMemory();
     return status;
 }
 
@@ -995,7 +1265,7 @@ ReplaceVariable(
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
-        // Yes. Make sure varialbe doesn't indicate APPEND_WRITE.
+        // Yes. Make sure variabLe doesn't indicate APPEND_WRITE.
         if ((Attributes.AppendWrite))
         {
             DMSG("replace error");
@@ -1057,7 +1327,9 @@ ReplaceVariable(
 
     DMSG("Want to replace with %d bytes of new data", remaining);
 
-    // Do the copy (across appended data entries if necessary)
+    // Do the copy (across appended data entries if necessary).
+    // Shrinking a variable can cause fragmentation, reclaiming the
+    // lost memory is handled on init.
     do {
         // Determine available space to copy to in the current variable
         canFit = varPtr->AllocSize - varPtr->DataOffset;
@@ -1071,6 +1343,8 @@ ReplaceVariable(
         DMSG("Stomping over 0x%x ot 0x%x", (varPtr->BaseAddress + varPtr->DataOffset),(varPtr->BaseAddress + varPtr->DataOffset) + length - 1);
         varPtr->DataSize = length;
 
+        _plat__MarkDirtyBlocks(varPtr->BaseAddress - (INT_PTR)s_NV, varPtr->AllocSize);
+
         // Adjust remaining and source pointer
         remaining -= length;
         srcPtr += length;
@@ -1081,6 +1355,7 @@ ReplaceVariable(
         if(nextOffset) {
             DMSG("Continuing on to next element");
             // Calculate pointer to next set of appended data
+            Var = varPtr;
             varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + nextOffset);
         }
 
@@ -1117,12 +1392,14 @@ ReplaceVariable(
             // Clean up the excess appended data entries now. If there is a nextOffset
             // Var will already point to the next element in the list.
             status = DeleteVariable(varPtr, VarType, Attributes);
-            _plat__NvCommit();
-            Var->NextOffset = NULL;
+            DMSG("Clearing NextOffset from 0x%x", (INT_PTR)Var);
+            Var->NextOffset = 0;
+            _plat__MarkDirtyBlocks(Var->BaseAddress - (INT_PTR)s_NV, Var->AllocSize);
         }
     }
 
 Cleanup:
+    DumpAuthvarMemory();
     return status;
 }
 
@@ -1280,7 +1557,7 @@ GetVariableType(
 
 --*/
 {
-    // An empty attributes field or guid means this is appended/deleted data
+    // An empty attributes field or guid means this is deleted data
     if (!(Attributes.Flags) || !memcmp(VendorGuid, &GUID_NULL, sizeof(GUID)))
     {
         return FALSE;

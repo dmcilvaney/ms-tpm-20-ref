@@ -45,7 +45,7 @@
 // A change to this constant should be the result of a change to
 // implementation.h, Admin.h, and/or varops.h. A change to the size
 // of fTPM's NV memory needs to be consistent accross these headers.
-#define NV_TOTAL_MEMORY_SIZE	(0x20000UL)
+#define NV_TOTAL_MEMORY_SIZE    (0x20000UL)
 #define NV_BLOCK_SIZE           (0x1000UL)
 
 // Actual size of Admin space used. (See note in NVMem.c):
@@ -66,6 +66,8 @@
 #define NV_TPM_STORAGE_SIZE ROUNDUP(NV_MEMORY_SIZE, NV_BLOCK_SIZE)
 #define NV_AUTHVAR_SIZE     (NV_TOTAL_MEMORY_SIZE - (NV_TPM_STORAGE_SIZE + NV_ADMIN_STATE_SIZE))
 #define NV_AUTHVAR_START    (NV_TOTAL_MEMORY_SIZE - NV_AUTHVAR_SIZE)
+// Align all authvar structs to 64 bit alignment
+#define NV_AUTHVAR_ALIGNMENT     (0x8)
 
 //
 // Note that NV_TOTAL_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.
