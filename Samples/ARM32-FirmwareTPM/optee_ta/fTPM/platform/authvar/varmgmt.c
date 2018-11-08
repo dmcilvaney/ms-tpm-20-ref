@@ -225,27 +225,6 @@ UpdateOffsets(
     }
 }
 
-/*VOID
-UpdateNode(
-    PUEFI_VARIABLE OldVar,
-    PUEFI_VARIABLE NewVar
-)
-// Update pVar's node if it gets moved.
-{
-    PLIST_ENTRY head = &MemoryReclamationList;
-    PLIST_ENTRY cur = head->Flink;
-    PMEMORY_RECLAMATION_NODE node;
-
-    while ((cur) && (cur != head)) {
-        node = (PMEMORY_RECLAMATION_NODE)cur;
-        if( node->pVar == OldVar ) {
-            DMSG("Updating 0x%x to point to 0x%x", (INT_PTR)OldVar, (INT_PTR)NewVar);
-            node->pVar = NewVar;
-        }
-        cur = cur->Flink;
-    }
-}*/
-
 UINT32
 TrackOffset(
     PUEFI_VARIABLE pVar
@@ -1265,7 +1244,7 @@ ReplaceVariable(
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
-        // Yes. Make sure variabLe doesn't indicate APPEND_WRITE.
+        // Yes. Make sure variable doesn't indicate APPEND_WRITE.
         if ((Attributes.AppendWrite))
         {
             DMSG("replace error");
