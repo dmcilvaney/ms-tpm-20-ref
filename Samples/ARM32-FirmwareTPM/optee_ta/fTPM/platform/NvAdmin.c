@@ -71,9 +71,9 @@ _admin__NvInitState()
     //
     // Initialize TPM saved runtime state
     //
-    s_stateSize[NV_TPM_STATE_FLAGS] = sizeof(TPM_CHIP_STATE);
-    s_stateSize[NV_TPM_STATE_PPI] = sizeof(FTPM_PPI_STATE);
-    s_stateSize[NV_TPM_STATE_AUTHVAR] = sizeof(NV_AUTHVAR_STATE);
+    s_stateSize[NV_TPM_STATE_FLAGS] = sizeof(TPM_CHIP_STATE);       // 1 * sizeof(UINT32)
+    s_stateSize[NV_TPM_STATE_PPI] = sizeof(FTPM_PPI_STATE);         // 3 * sizeof(UINT32)
+    s_stateSize[NV_TPM_STATE_AUTHVAR] = sizeof(NV_AUTHVAR_STATE);   // 1 * sizeof(UINT32)
 
     //
     // Initialize TPM state data addresses. Stored after the main NV space.
@@ -84,7 +84,7 @@ _admin__NvInitState()
         stateAddr += s_stateSize[i];
     }
 
-    pAssert(stateAddr <= (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE));
+    pAssert(stateAddr <= (NV_MEMORY_SIZE + NV_ADMIN_STATE_SIZE));
 }
 
 //***_admin__SaveChipFlags()

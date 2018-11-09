@@ -124,7 +124,7 @@ _plat__RealTime(
         _plat__TimerReset();
 
         Result = TEE_GetTAPersistentTime(&Time);
-        // If the reset didn't resolve the error condision, give up.
+        // If the reset didn't resolve the error condition, give up.
         assert(Result == TEE_SUCCESS);
     }
     assert(Result == TEE_SUCCESS);

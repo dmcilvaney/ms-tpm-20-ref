@@ -211,21 +211,28 @@ _plat__NvInitFromStorage()
 		}
 	}
 
-	// Storage objects are open and valid, next validate revision
+    // Storage objects are open and valid, next validate revision. Note that a
+    // change to s_chipRevision width also requires a change to NvMemoryLayout.h.
 	s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
 	if ((s_chipRevision != *(UINT64*)&(s_NV[NV_CHIP_REVISION_OFFSET]))) {
 
 		// Failure to validate revision, re-init (only the TPM's NV memory)
-		memset(s_NV, 0, (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE));
+		memset(s_NV, 0, (NV_TPM_STORAGE_SIZE));
+
+        // Going to manufacture, ensure zero flags
+        g_chipFlags.flags = 0;
+
+        // Save flags
+        _admin__SaveChipFlags();
 
 		// Dirty the block map, we're going to re-init.
-        _plat__MarkDirtyBlocks(0, (NV_MEMORY_SIZE + NV_TPM_STATE_SIZE));
+        _plat__MarkDirtyBlocks(0, (NV_TPM_STORAGE_SIZE));
 
 		// Init with proper revision
 		s_chipRevision = ((((UINT64)firmwareV2) << 32) | (firmwareV1));
 		*(UINT64*)&(s_NV[NV_CHIP_REVISION_OFFSET]) = s_chipRevision;
 
-		DMSG("Failed to validate revision. Did we just (re)-init storage?");
+		DMSG("Failed to validate revision. Did we just (re)-init?");
 
 		// Force (re)manufacture.
 		s_NVChipFileNeedsManufacture = TRUE;
@@ -259,11 +266,13 @@ _plat__NvWriteBack()
     UINT32 i, j, k;
 	UINT32 objID;
 	TEE_Result Result;
-
+    
 	// Exit if no dirty blocks.
 	if ((!s_dirty) || (!s_NVInitialized)) {
 		return;
 	}
+
+    DMSG("Start writeback.");
 
 	// Write dirty blocks.
     for (i = 0; i < NV_BLOCK_COUNT; i++) {
@@ -313,7 +322,7 @@ _plat__NvWriteBack()
         }
     }
 
-	DMSG("Done writeback");
+    DMSG("Done writeback");
 
     return;
 
@@ -344,11 +353,11 @@ _plat__NVInitAuthVar(
     if (_plat__NvNeedsManufacture())
     {
         DMSG("(Re-)Initing AuthVars.");
-        authVarState.NvEnd = NV_MEMORY_SIZE + NV_TPM_STATE_SIZE;
+        authVarState.NvEnd = NV_AUTHVAR_START;
         _admin__SaveAuthVarState(&authVarState);
     }
 
-    return(AuthVarInitStorage((NV_MEMORY_SIZE + NV_TPM_STATE_SIZE)));
+    return(AuthVarInitStorage(NV_AUTHVAR_START));
 }
 
 

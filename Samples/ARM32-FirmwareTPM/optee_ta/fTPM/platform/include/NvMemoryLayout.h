@@ -48,26 +48,25 @@
 #define NV_TOTAL_MEMORY_SIZE	(0x20000UL)
 #define NV_BLOCK_SIZE           (0x1000UL)
 
-// Actual size of Admin space used. (See note in NVMem.c)
-#define TPM_STATE_SIZE          0x10
+// Actual size of Admin space used. (See note in NVMem.c):
+//      sizeof(TPM_CHIP_STATE)   - 1 * sizeof(UINT32)
+//      sizeof(FTPM_PPI_STATE)   - 3 * sizeof(UINT32)
+//      sizeof(NV_AUTHVAR_STATE) - 1 * sizeof(UINT32)
+#define ADMIN_STATE_SIZE    0x14
 
 // Admin space tacked on to NV, padded out to NV_BLOCK_SIZE alignment.
-#define NV_TPM_STATE_SIZE       ROUNDUP(TPM_STATE_SIZE, NV_BLOCK_SIZE)
-#define NV_TPM_STORAGE_SIZE     ROUNDUP(NV_MEMORY_SIZE, NV_BLOCK_SIZE)
-
-
+// NOTE: We assume we have at least sizeof(UINT64) bytes in this padding!
+#define NV_ADMIN_STATE_SIZE     ROUNDUP(ADMIN_STATE_SIZE, NV_BLOCK_SIZE)
 
 // Total allocation of the fTPM TA's storage for Authenticated Variables
 //      fTPM TA storage (128K total):
 //                        16K   (0x4000  bytes) - TPM NV storage
-//                         1k   (0x1000   bytes) - fTPM "Admin" state
+//                         1k   (0x1000  bytes) - fTPM "Admin" state
 //          128K - (16K + 1k)   (0x1B000 bytes) - AuthVar storage
-#define NV_AUTHVAR_SIZE     (NV_TOTAL_MEMORY_SIZE - (NV_TPM_STORAGE_SIZE + NV_TPM_STATE_SIZE))
+#define NV_TPM_STORAGE_SIZE ROUNDUP(NV_MEMORY_SIZE, NV_BLOCK_SIZE)
+#define NV_AUTHVAR_SIZE     (NV_TOTAL_MEMORY_SIZE - (NV_TPM_STORAGE_SIZE + NV_ADMIN_STATE_SIZE))
 #define NV_AUTHVAR_START    (NV_TOTAL_MEMORY_SIZE - NV_AUTHVAR_SIZE)
 
-//
-// OpTEE still has an all or nothing approach to reads/writes. To provide
-// more performant access to storage, break up NV accross 1Kbyte blocks.
 //
 // Note that NV_TOTAL_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.
 //
@@ -76,11 +75,12 @@
 
 //
 // This offset puts the revision field at the end of the TPM Admin
-// state. The Admin space in NV is down to ~16 bytes but is padded out to
-// 1k bytes to avoid alignment issues and allow for growth.
+// state. The Admin space in NV is down to 0x14 bytes but is padded out
+// to 1k bytes to avoid alignment issues and allow for growth.
 //
-//TODO: don't use sizeof(uint32)
-#define NV_CHIP_REVISION_OFFSET ( (NV_MEMORY_SIZE) + (NV_TPM_STATE_SIZE) - (2 * sizeof(UINT32)) )
-
+// REVISIT: Consider defining a type for the chip revision and managing it 
+//          in the same context as other "Admin" state.
+//
+#define NV_CHIP_REVISION_OFFSET ( (NV_TPM_STORAGE_SIZE) + (ADMIN_STATE_SIZE) - (sizeof(UINT64)) )
 
 #endif

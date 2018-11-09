@@ -392,29 +392,26 @@ SetVariable(
         || (SetParam->OffsetName + varNameSize > offsetLimit)
         || (SetParam->OffsetData + dataSize > offsetLimit))
     {
-        EMSG("Set variable bad parameters");
+        EMSG("Set variable bad parameters (sizes/offsets)");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // We expect the name of the variable before the data (if provided)
     if ((SetParam->DataSize) && (SetParam->OffsetName > SetParam->OffsetData))
     {
-        EMSG("Set variable bad parameters");
+        EMSG("Set variable bad parameters (name/size)");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // Alignment check on variable name offset
     if (SetParam->OffsetName % sizeof(WCHAR))
     {
-        EMSG("Set variable bad parameters");
+        EMSG("Set variable bad parameters (align)");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // Now pickup parameter fields
     vendorGuid = SetParam->VendorGuid;
-    DMSG("vendorGuid addr: 0x%x",(uint32_t)&vendorGuid);
-    DHEXDUMP(&vendorGuid,sizeof(vendorGuid));
-
     attrib.Flags = SetParam->Attributes.Flags;
     varName = (PWSTR)(&SetParam->Payload[SetParam->OffsetName]);
     data = &SetParam->Payload[SetParam->OffsetData];
@@ -427,19 +424,19 @@ SetVariable(
     // Attribute validation
     if ((attrib.Flags & (~EFI_KNOWN_ATTRIBUTES)) != 0)
     {
-        EMSG("Set variable bad parameters");
+        EMSG("Set variable bad parameters0");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite && attrib.TimeBasedAuth)
     {
-        EMSG("Set variable bad parameters");
+        EMSG("Set variable bad parameters1");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite || attrib.HwErrorRec)
     {
-        EMSG("Set variable NO AUTH");
+        EMSG("Set variable NOT IMPLEMENTED");
         return TEE_ERROR_NOT_IMPLEMENTED;
     }
 
@@ -570,6 +567,8 @@ SetVariable(
         DMSG("set");
         if (attrib.TimeBasedAuth)
         {
+            DMSG("AUTHAUTHAUTH");
+
             status = AuthenticateSetVariable(
                 &unicodeName,
                 &vendorGuid,
