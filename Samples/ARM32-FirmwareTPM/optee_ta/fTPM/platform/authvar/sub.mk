@@ -1,0 +1,10 @@
+#WOLF_SSL_FLAGS = -DSINGLE_THREADED -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPENSSL_EXTRA -DNO_FILESYSTEM -DWOLFSSL_USER_SETTINGS -DTIME_OVERRIDES -DSTRING_USER -DCTYPE_USER
+
+#cflags-y += $(WOLF_SSL_FLAGS)  $(WOLF_WARNING_SUPPRESS)
+
+srcs-y += varops.c
+cflags-varops.c-y += $(WOLF_SSL_FLAGS)
+srcs-y += varmgmt.c
+cflags-varmgmt.c-y += $(WOLF_SSL_FLAGS)
+srcs-y += varauth.c
+cflags-varauth.c-y += $(WOLF_SSL_FLAGS)

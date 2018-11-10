@@ -1,6 +1,3 @@
-
-WOLF_SSL_FLAGS = -DSINGLE_THREADED -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPENSSL_EXTRA -DNO_FILESYSTEM -DWOLFSSL_USER_SETTINGS -DTIME_OVERRIDES -DSTRING_USER -DCTYPE_USER
-
 #
 # Wolfcrypt has multiple unused functions, unfortunately the OPTEE build system can only turn off compiler flags for
 # files in the same directory as the sub.mk file. It is not possible to place sub.mk files in the git submodules without
@@ -8,8 +5,6 @@ WOLF_SSL_FLAGS = -DSINGLE_THREADED -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPE
 #
 
 WOLF_WARNING_SUPPRESS = -Wno-unused-function
-
-cflags-y += $(WOLF_SSL_FLAGS) $(WOLF_WARNING_SUPPRESS)
 
 #
 # For the purposes of this command the current working directory is the makefile root (/fTPM) folder,
@@ -35,15 +30,19 @@ remove_wolf_symlink:
 
 global-incdirs-y += wolf_symlink
 
-srcs-y += wolf_symlink/wolfcrypt/src/aes.c
-srcs-y += wolf_symlink/wolfcrypt/src/asn.c
-srcs-y += wolf_symlink/wolfcrypt/src/ecc.c
-srcs-y += wolf_symlink/wolfcrypt/src/integer.c
-srcs-y += wolf_symlink/wolfcrypt/src/memory.c
-srcs-y += wolf_symlink/wolfcrypt/src/sha.c
-srcs-y += wolf_symlink/wolfcrypt/src/sha256.c
-srcs-y += wolf_symlink/wolfcrypt/src/sha512.c
-srcs-y += wolf_symlink/wolfcrypt/src/tfm.c
-srcs-y += wolf_symlink/wolfcrypt/src/wolfmath.c
-srcs-y += wolf_symlink/wolfcrypt/src/des3.c
-srcs-y += wolf_symlink/wolfcrypt/src/random.c
+wolf_crypt_files = \
+wolf_symlink/wolfcrypt/src/aes.c \
+ wolf_symlink/wolfcrypt/src/asn.c \
+ wolf_symlink/wolfcrypt/src/ecc.c \
+ wolf_symlink/wolfcrypt/src/integer.c \
+ wolf_symlink/wolfcrypt/src/memory.c \
+ wolf_symlink/wolfcrypt/src/sha.c \
+ wolf_symlink/wolfcrypt/src/sha256.c \
+ wolf_symlink/wolfcrypt/src/sha512.c \
+ wolf_symlink/wolfcrypt/src/tfm.c \
+ wolf_symlink/wolfcrypt/src/wolfmath.c \
+ wolf_symlink/wolfcrypt/src/des3.c \
+ wolf_symlink/wolfcrypt/src/random.c \
+
+srcs-y = $(foreach wcfile, $(wolf_crypt_files), $(wcfile) )
+$(foreach wcfile, $(wolf_crypt_files), $(eval  cflags-$(wcfile)-y += -DFOOBAR $(WOLF_SSL_FLAGS) $(WOLF_WARNING_SUPPRESS)))

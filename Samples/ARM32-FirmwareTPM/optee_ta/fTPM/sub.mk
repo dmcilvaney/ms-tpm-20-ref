@@ -3,6 +3,12 @@ NOWERROR ?= 1
 CFG_TA_DEBUG ?= 1
 CFG_TEE_TA_LOG_LEVEL ?= 1
 
+FTPM_FLAGS = -DGCC -DUSE_WOLFCRYPT -DSIMULATION=NO -DUSE_PLATFORM_EPS -DVTPM
+FTPM_DEBUG =  -DCOMPILER_CHECKS=YES -DfTPMDebug -DRUNTIME_SIZE_CHECKS -DLIBRARY_COMPATIBILITY_CHECK
+FTPM_RELEASE = -DCOMPILER_CHECKS=NO -DRUNTIME_SIZE_CHECKS=NO -DLIBRARY_COMPATIBILITY_CHECK=NO
+
+WOLF_SSL_FLAGS = -DSINGLE_THREADED -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPENSSL_EXTRA -DNO_FILESYSTEM -DWOLFSSL_USER_SETTINGS -DTIME_OVERRIDES -DSTRING_USER -DCTYPE_USER
+
 cflags-y += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector -mno-unaligned-access
 
 ifeq ($(CFG_TA_DEBUG),y)
@@ -29,7 +35,6 @@ global-incdirs-y += include
 global-incdirs-y += reference/include
 global-incdirs-y += platform/include
 global-incdirs-y += platform/authvar/include
-global-incdirs-y += lib/tpm/tpm_symlink/TPMCmd/tpm/include
 
 srcs-y += platform/AdminPPI.c
 srcs-y += platform/Cancel.c
@@ -45,8 +50,7 @@ srcs-y += platform/RunCommand.c
 srcs-y += platform/Unique.c
 srcs-y += platform/EPS.c
 srcs-y += reference/RuntimeSupport.c
-srcs-y += platform/authvar/varops.c
-srcs-y += platform/authvar/varmgmt.c
-srcs-y += platform/authvar/varauth.c
+
+subdirs-y += platform/authvar
 
 srcs-y += fTPM.c
