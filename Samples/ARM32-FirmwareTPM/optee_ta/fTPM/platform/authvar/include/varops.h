@@ -39,6 +39,26 @@
 #include <Implementation.h> // fTPM defines
 #include <NvMemoryLayout.h>
 
+extern int _plat__NvCommit(void);
+extern void _plat__NvMemoryClear(
+    unsigned int     startOffset,
+    unsigned int     size
+    );
+extern void _plat__NvMemoryWrite(
+    unsigned int        startOffset,
+    unsigned int        size,
+    void                *data
+    );
+extern void _plat__MarkDirtyBlocks (
+	unsigned int		startOffset,
+	unsigned int		size
+    );
+extern void _plat__NvMemoryMove(
+    unsigned int     sourceOffset,
+    unsigned int     destOffset,
+    unsigned int     size
+    );
+
 typedef union {
     BYTE  Flags;
     struct
@@ -73,22 +93,25 @@ typedef struct _UEFI_VARIABLE
     GUID VendorGuid;            // Associated GUID
     ATTRIBUTES Attributes;      // UEFI variable attributes
     USHORT NameSize;            // Length of var name in bytes
-    INT_PTR NameOffset;         // Offset to var name from BaseAddress
+    UINT_PTR NameOffset;         // Offset to var name from BaseAddress
     UINT32 AllocSize;           // Total size of this variable entry
     UINT32 ExtAttribSize;       // Size of extended attributes (auth only)
-    INT_PTR ExtAttribOffset;    // Offset to extended attributes (auth only)
+    UINT_PTR ExtAttribOffset;    // Offset to extended attributes (auth only)
     UINT32 DataSize;            // Size of data in this entry
-    INT_PTR DataOffset;         // Offset to var data from BaseAddress
-    INT_PTR BaseAddress;        // NV Only: Base addr for offsets
-    INT_PTR NextOffset;         // NV Only: Offset to appended data (or zero)
+    UINT_PTR DataOffset;         // Offset to var data from BaseAddress
+    UINT_PTR BaseAddress;        // NV Only: Base addr for offsets
+    UINT_PTR NextOffset;         // NV Only: Offset to appended data (or zero)
 } UEFI_VARIABLE, *PUEFI_VARIABLE;
 typedef CONST UEFI_VARIABLE *PCUEFI_VARIABLE;
 
 // AuthVar state in TA Admin data
 typedef struct _AUTHVAR_STATE
 {
-    UINT32  NvEnd;  // Offset to first byte beyond AuthVar NV data
+    UINT_PTR  NvEnd;  // Offset to first byte beyond AuthVar NV data
 } NV_AUTHVAR_STATE, *PNV_AUTHVAR_STATE;
+
+extern void _admin__SaveAuthVarState(NV_AUTHVAR_STATE *ptr);
+extern void _admin__RestoreAuthVarState(NV_AUTHVAR_STATE *ptr);
 
 // Struct for Get and GetNextVariable operations (REVISIT: Member ordering)
 typedef struct _VARIABLE_GET_PARAM

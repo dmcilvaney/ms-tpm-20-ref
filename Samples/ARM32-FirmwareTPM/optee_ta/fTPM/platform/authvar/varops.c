@@ -115,7 +115,7 @@ GetVariable(
 
     // Guard against overflow with name string
     if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) &&
-        (GetParam < (INT_PTR)(sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
+        ((UINT_PTR)GetParam < (UINT_PTR)(sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
         DMSG("Overflow on name string length");
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -151,7 +151,7 @@ GetVariable(
     if(status == TEE_ERROR_SHORT_BUFFER) {
         DMSG("Short buffer, need 0x%x bytes", *GetResultSize);
     } else {
-        DMSG("Retrieved up to 0x%x bytes into 0x%x", *GetResultSize, GetResult);
+        DMSG("Retrieved up to 0x%x bytes into 0x%lx", *GetResultSize, (UINT_PTR)GetResult);
     }
     
 Cleanup:
@@ -274,7 +274,7 @@ GetNextVariableName(
         // Init for variable search
         varName = (PWSTR)(GetNextParam->Name);
         unicodeName.Buffer = varName;
-        unicodeName.Length = varName - sizeof(WCHAR);
+        unicodeName.Length = (UINT_PTR)varName - sizeof(WCHAR);
         unicodeName.MaximumLength = varNameLen;
 
         // Get the next variable in the list
@@ -318,8 +318,8 @@ GetNextVariableName(
     // Prepare the result buffer with variable size, name, and guid
     // TODO: Guard against overflow here
     size = nextVar->NameSize + sizeof(VARIABLE_GET_NEXT_RESULT);
-    DMSG("Var at 0x%x has name size %d", (INT_PTR)nextVar, size);
-    DHEXDUMP(nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
+    DMSG("Var at 0x%lx has name size 0x%x", (UINT_PTR)nextVar, size);
+    DHEXDUMP((PBYTE)nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
     if (size > *GetNextResultSize)
     {
         DMSG("Short buffer, need 0x%x bytes", *GetNextResultSize);
@@ -332,8 +332,8 @@ GetNextVariableName(
     GetNextResult->NameSize = nextVar->NameSize;
     GetNextResult->VendorGuid = nextVar->VendorGuid;
     memmove(GetNextResult->Name, 
-        (nextVar->NameOffset + nextVar->BaseAddress),
-        nextVar->NameSize);
+            (PBYTE)(nextVar->NameOffset + nextVar->BaseAddress),
+            nextVar->NameSize);
 
     // Success, now update size field with bytes written
     *GetNextResultSize = sizeof(VARIABLE_GET_NEXT_RESULT) + nextVar->NameSize;
@@ -412,6 +412,9 @@ SetVariable(
 
     // Now pickup parameter fields
     vendorGuid = SetParam->VendorGuid;
+    DMSG("vendorGuid addr: 0x%lx",(UINT_PTR)&vendorGuid);
+    DHEXDUMP(&vendorGuid,sizeof(vendorGuid));
+
     attrib.Flags = SetParam->Attributes.Flags;
     varName = (PWSTR)(&SetParam->Payload[SetParam->OffsetName]);
     data = &SetParam->Payload[SetParam->OffsetData];
@@ -446,20 +449,20 @@ SetVariable(
     // Does the variable exist already?
     SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
 
-    DMSG("varPtr: 0x%x, flags: 0x%x", varPtr, attrib.Flags);
+    DMSG("varPtr: 0x%lx, flags: 0x%x", (UINT_PTR)varPtr, attrib.Flags);
 
     // Set() on a variable causes deletion when:
     //   1. Setting a data variable with no access attributes
     //   2. dataSize is zero unless write attribute(s) set
     isDeleteOperation = (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES) ||
-        (dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES));
-    DMSG("Delete operation? %d, 0x%x (ds: 0x%x, AA:0x%x && WA:0x%x)", isDeleteOperation, attrib.Flags, EFI_ACCESS_ATTRIBUTES, EFI_WRITE_ATTRIBUTES);
+        ((dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES)));
+    DMSG("Delete operation? %d, 0x%x (ds: 0x%x, AA:0x%lx && WA:0x%lx)", isDeleteOperation,attrib.Flags, dataSize, EFI_ACCESS_ATTRIBUTES, EFI_WRITE_ATTRIBUTES);
 
     // Yes
     if (varPtr != NULL)
     {
         DMSG("Found an existing variable");
-        DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%x", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
+        DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%lx", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
         // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE unless we are deleting
         // the variable.
         if ( !isDeleteOperation &&
@@ -638,7 +641,7 @@ Cleanup:
     _plat__NvCommit();
     DMSG("set done");
     DHEXDUMP(data, dataSize);
-    DMSG("Data:0x%x, Size:0x%x", data, dataSize);
+    DMSG("Data:0x%lx, Size:0x%x", (UINT_PTR)data, dataSize);
     return status;
 }
 

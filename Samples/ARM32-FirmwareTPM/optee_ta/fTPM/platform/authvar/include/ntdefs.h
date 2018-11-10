@@ -204,7 +204,7 @@ typedef struct _GUID {
     unsigned char  Data4[8];
 } GUID;
 
-extern const GUID GUID_NULL;
+extern GUID GUID_NULL;
 
 #ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -275,10 +275,7 @@ size_t wcslen(const wchar_t* str)
     do {
         ++len;
         ++p;
-        //DMSG("p:(0x%x)0x%x, NULL:0x%x", (INT_PTR)p, (uint16_t)*p, (uint16_t)L'\0');
     } while (*p != L'\0');
-    //DMSG("size of wchar: %d", sizeof(wchar_t));
-    //DHEXDUMP(str, len*4);
 
     return len;
 }
@@ -313,6 +310,7 @@ FatalListEntryError(
     PVOID p3
 )
 {
+    EMSG("0x%p,0x%p,0x%p", p1, p2, p3);
     TEE_Panic(TEE_ERROR_BAD_STATE);
 }
 
@@ -367,8 +365,6 @@ AppendTailList(
 {
     PLIST_ENTRY ListEnd = ListHead->Blink;
 
-    RtlpCheckListEntry(ListHead);
-    RtlpCheckListEntry(ListToAppend);
     ListHead->Blink->Flink = ListToAppend;
     ListHead->Blink = ListToAppend->Blink;
     ListToAppend->Blink->Flink = ListHead;

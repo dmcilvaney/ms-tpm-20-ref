@@ -39,7 +39,7 @@ typedef struct _MEMORY_RECLAMATION_NODE
 {
     LIST_ENTRY List;            // Flink/Blink
     PUEFI_VARIABLE pVar;        // UEFI Variable node
-    INT_PTR NV_Offset;          // The offset into NV being tracked
+    UINT_PTR NV_Offset;          // The offset into NV being tracked
 } MEMORY_RECLAMATION_NODE, *PMEMORY_RECLAMATION_NODE;
 
 VOID
@@ -93,4 +93,12 @@ QueryByAttribute(
     PUINT64     VarStorageMax,
     PUINT64     VarStorageRemaining,
     PUINT64     MaxVarSize
+);
+
+TEE_Result
+RetrieveVariable(
+    PUEFI_VARIABLE       Var,           // IN
+    VARIABLE_GET_RESULT *ResultBuf,     // OUT
+    UINT32               ResultBufLen,  // IN
+    UINT32              *BytesWritten   // OUT (optional)
 );

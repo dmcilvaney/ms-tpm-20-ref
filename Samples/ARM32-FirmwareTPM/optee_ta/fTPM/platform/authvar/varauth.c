@@ -32,6 +32,7 @@
  */
 
 #include <varauth.h>
+#include <varmgmt.h>
 
  // Track PK set/unset 
 bool SecureBootInUserMode = FALSE;
@@ -353,7 +354,7 @@ Pkcs7Verify(
 Cleanup:
     if (!wrapped)
     {
-        TREE_Free(signedData);
+        TEE_Free(signedData);
     }
 
     return retVal;
@@ -1033,7 +1034,7 @@ AuthenticateSetVariable(
         }
 
         // Authenticated volatile variables are not implemented, we know this is an offset
-        pExtAttrib = (PEXTENDED_ATTRIBUTES)((INT_PTR)Var + Var->ExtAttribOffset);
+        pExtAttrib = (PEXTENDED_ATTRIBUTES)((UINT_PTR)Var + Var->ExtAttribOffset);
         prevEfiTime = &pExtAttrib->EfiTime;
     }
 
