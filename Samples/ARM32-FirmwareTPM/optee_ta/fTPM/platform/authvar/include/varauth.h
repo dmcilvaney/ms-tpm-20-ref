@@ -35,7 +35,6 @@
 #include <varmgmt.h>
 
 // Definitios/includes for fTPM crypto layer
-#define WOLFSSL_RIOT_OS 1
 #include <limits.h>
 #include <BaseTypes.h>
 #include <GpMacros.h>
