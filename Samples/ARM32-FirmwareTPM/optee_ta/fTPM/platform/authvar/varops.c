@@ -366,7 +366,7 @@ SetVariable(
     UINT32 offsetLimit, totalSize;
     VARTYPE varType;
     ATTRIBUTES attrib;
-    BOOLEAN duplicateFound, isDeleteOperation;
+    BOOLEAN duplicateFound = FALSE, isDeleteOperation = FALSE;
 
     DMSG("set");
 
@@ -633,9 +633,11 @@ SetVariable(
     goto Cleanup;
 
 Cleanup:
+    DMSG("Clean up");
     // Need to clean up if we've updated an existing authenticated variable
     if (duplicateFound)
     {
+        DMSG("Cleaning up duplicate");
         TEE_Free(content);
     }
     _plat__NvCommit();
