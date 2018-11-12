@@ -357,6 +357,13 @@ ReclaimVariable(
 
     DMSG("Reclaiming memory at 0x%lx\n", (UINT_PTR)pVar);
 
+    // If s_nextFree is not consistent with actual data, we will run into an all zero block.
+    // This is a sign of data corruption and is considered an error.
+    if (pVar->AllocSize == 0) {
+        EMSG("Detected corruption in authenticated variable store");
+        TEE_Panic(TEE_ERROR_BAD_STATE);
+    }
+
     // Check if the variable has been deleted
     if(!memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID))) {
         DMSG("Deleted variable!");
@@ -409,6 +416,10 @@ ReclaimVariable(
         DMSG("Last variable, shrinking s_nextFree by 0x%x", (shrinkAmmount + deleteAmmount));
         s_nextFree -= (shrinkAmmount + deleteAmmount);
         DMSG("s_nextFree is now 0x%lx (0x%lx)", s_nextFree, (UINT_PTR)&s_NV[s_nextFree]);
+        // It is important to clear data from the end of the list. This allows us to detect
+        // corruption (ie s_nextFree points past the end of actual data due to a power failure
+        // during write back).
+        _plat__NvMemoryClear(s_nextFree, shrinkAmmount + deleteAmmount);
         
         PLIST_ENTRY head = &MemoryReclamationList;
         PLIST_ENTRY cur = head->Flink;
@@ -422,6 +433,14 @@ ReclaimVariable(
         // expand that variable so it is allocated the entire gap.
         // This space will be reclaimed in the next call to ReclaimMemory().
         DMSG("Size of nextVar: 0x%x, distance to move: shrink amount:0x%x + delete ammount:0x%x", nextVar->AllocSize, shrinkAmmount, deleteAmmount);
+
+        // If s_nextFree is not consistent with actual data, we will run into an all zero block.
+        // This is a sign of data corruption and is considered an error.
+        if (nextVar->AllocSize == 0) {
+            EMSG("Detected corruption in authenticated variable store");
+            TEE_Panic(TEE_ERROR_BAD_STATE);
+        }
+
         nextVar->AllocSize += shrinkAmmount + deleteAmmount;
         DMSG("Next var now has alloc size of 0x%x", nextVar->AllocSize);
 
