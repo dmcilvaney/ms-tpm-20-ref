@@ -83,6 +83,6 @@
 // REVISIT: Consider defining a type for the chip revision and managing it 
 //          in the same context as other "Admin" state.
 //
-#define NV_CHIP_REVISION_OFFSET ( (NV_TPM_STORAGE_SIZE) + (ADMIN_STATE_SIZE) - (sizeof(UINT64)) )
+#define NV_CHIP_REVISION_OFFSET ( (NV_TPM_STORAGE_SIZE) + (NV_ADMIN_STATE_SIZE) - (sizeof(UINT64)) )
 
 #endif
