@@ -1176,8 +1176,7 @@ AppendVariable(
             DMSG("lastVar @ 0x%lx, varPtr @ 0x%lx,",(UINT_PTR)lastVar, (UINT_PTR)varPtr);
         }
 
-        //TODO: We can just append to the last remaining variable if its at the end of memory?
-        // Do we care?
+        // This is the last variable, we can just extend the end of memory.
         if((UINT_PTR)(varPtr->BaseAddress + varPtr->AllocSize) == (UINT_PTR)&s_NV[s_nextFree]) {
             DMSG("End of memory, just expand");
             apndData = (PBYTE)(varPtr->BaseAddress + varPtr->DataOffset + varPtr->DataSize);
@@ -1190,6 +1189,7 @@ AppendVariable(
             varPtr->AllocSize = ROUNDUP(varPtr->DataOffset + varPtr->DataSize, NV_AUTHVAR_ALIGNMENT);
             DMSG("varPtr now has 0x%x bytes of data", varPtr->DataSize);
 
+            // No need to create additional nodes later.
             DataSize = 0;
 
             s_nextFree = (varPtr->BaseAddress + varPtr->AllocSize) - (UINT_PTR)s_NV;
