@@ -558,13 +558,17 @@ AuthVarInitStorage(
         guid = (PCGUID)&(pVar->VendorGuid);
         name = (PCWSTR)(pVar->BaseAddress + pVar->NameOffset);
 
-        // Get type for this var, if not deleted or appended data entry
-        if (pVar->NameSize > 0 && GetVariableType(name, guid, pVar->Attributes, &varType))
+        // Check if deleted or appended data entry
+        DMSG("Checking state of next variable at 0x%lx", (UINT_PTR)pVar);
+        if (GetVariableType(name, guid, pVar->Attributes, &varType))
         {
-            // Add pointer to this var to appropriate in-memory list
-            DMSG("Adding variable to lists");
-            InsertTailList(&VarInfo[varType].Head, &pVar->List);
-
+            // Only track a node if it is the first entry
+            if(pVar->NameSize > 0)
+            {
+                // Add pointer to this var to appropriate in-memory list
+                DMSG("Adding variable to lists");
+                InsertTailList(&VarInfo[varType].Head, &pVar->List);
+            }
             // If this variable has multiple components it may be necessary to update
             // the offsets as memory is reclaimed.
             DMSG("Var at 0x%lx has offset 0x%lx", (UINT_PTR)pVar, pVar->NextOffset);
@@ -1174,11 +1178,29 @@ AppendVariable(
 
         //TODO: We can just append to the last remaining variable if its at the end of memory?
         // Do we care?
+        if((UINT_PTR)(varPtr->BaseAddress + varPtr->AllocSize) == (UINT_PTR)&s_NV[s_nextFree]) {
+            DMSG("End of memory, just expand");
+            apndData = (PBYTE)(varPtr->BaseAddress + varPtr->DataOffset + varPtr->DataSize);
+            DMSG("Adding 0x%x bytes by extending the existing variable", DataSize);
+            memmove(apndData, Data, DataSize);
 
+            // Update sizes (we know we're adding to the end of NV data)
+            DMSG("varPtr had 0x%x bytes of data", varPtr->DataSize);
+            varPtr->DataSize += DataSize;
+            varPtr->AllocSize = ROUNDUP(varPtr->DataOffset + varPtr->DataSize, NV_AUTHVAR_ALIGNMENT);
+            DMSG("varPtr now has 0x%x bytes of data", varPtr->DataSize);
+
+            DataSize = 0;
+
+            s_nextFree = (varPtr->BaseAddress + varPtr->AllocSize) - (UINT_PTR)s_NV;
+            NV_AUTHVAR_STATE authVarState;
+            authVarState.NvEnd = s_nextFree;
+            _admin__SaveAuthVarState(&authVarState);
+        }  
         // Is lastVar adjacent to varPtr?
         // We should attempt to merge entries which are now adjacent due to prior
         // deletions.
-        if ((UINT_PTR)(varPtr->BaseAddress + varPtr->AllocSize) == (UINT_PTR)lastVar)
+        else if ((UINT_PTR)(varPtr->BaseAddress + varPtr->AllocSize) == (UINT_PTR)lastVar)
         {
             DMSG("Adjacent, try to merge");
             // Yes, init pointer to appended data destination
