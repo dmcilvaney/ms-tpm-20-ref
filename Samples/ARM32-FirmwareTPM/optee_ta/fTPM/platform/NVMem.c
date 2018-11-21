@@ -77,12 +77,9 @@ static const UINT32 s_StorageObjectID = 0x54504D00;	// 'TPM00'
 static TEE_ObjectHandle s_NVStore[NV_BLOCK_COUNT] = { TEE_HANDLE_NULL };
 
 //
-// Bitmap for NV blocks
+// Map for tacking clean/dirty NV blocks
 //
-#define BLOCKMAP_INDEX(x)   ((x) & (NV_INDEX_MASK) >> 6)
-#define BLOCKMAP_MASK(x)    ((x) & (NV_BLOCK_MASK))
-#define BLOCKMAP_MAXINDEX   (BLOCKMAP_INDEX(NV_BLOCK_COUNT) + 1)
-static UINT64 s_blockMap[BLOCKMAP_MAXINDEX] = { 0 };
+static bool s_blockMap[NV_BLOCK_COUNT] = { 0 };
 static bool s_dirty = TRUE;
 
 //
@@ -91,8 +88,8 @@ static bool s_dirty = TRUE;
 #define NV_DIRTY_ALL(x)                     \
 {                                           \
 s_dirty = TRUE;                             \
-for (int i = 0; i < BLOCKMAP_MAXINDEX; i++) \
-    x[i] = (~(0x0ULL));                     \
+for (int i = 0; i < NV_BLOCK_COUNT; i++) \
+    x[i] = (TRUE);                     \
 }
 
 //
@@ -263,7 +260,7 @@ Error:
 static void
 _plat__NvWriteBack()
 {
-    UINT32 i, j, k;
+    UINT32 i;
 	UINT32 objID;
 	TEE_Result Result;
     
@@ -277,12 +274,8 @@ _plat__NvWriteBack()
 	// Write dirty blocks.
     for (i = 0; i < NV_BLOCK_COUNT; i++) {
 
-        // BlockMap index/mask
-        j = BLOCKMAP_INDEX(i);
-        k = BLOCKMAP_MASK(i);
-
         // Dirty block?
-        if ((s_blockMap[j] & (0x1ULL << k))) {
+        if ((s_blockMap[i] )) {
 
 			// Form storage object ID for this block.
 			objID = s_StorageObjectID + i;
@@ -305,13 +298,13 @@ _plat__NvWriteBack()
 			}
             
 			// Force storage stack to update its backing store
-            TEE_CloseObject(s_NVStore[i]);
+            /*TEE_CloseObject(s_NVStore[i]);
             
             Result = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE,
                                               (void *)&objID,
                                               sizeof(objID),
                                               TA_STORAGE_FLAGS,
-                                              &s_NVStore[i]);
+                                              &s_NVStore[i]);*/
 			// Success?
 			if (Result != TEE_SUCCESS) {
 				DMSG("e");
@@ -319,10 +312,11 @@ _plat__NvWriteBack()
 			}
 
 			// Clear dirty bit.
-            s_blockMap[j] &= ~(0x1ULL << k);
+            s_blockMap[i] = FALSE;
         }
     }
 
+	s_dirty = FALSE;
     DMSG("Done writeback");
 
     return;
@@ -541,7 +535,7 @@ _plat__MarkDirtyBlocks (
 {
 	unsigned int blockEnd;
 	unsigned int blockStart;	
-    unsigned int i, j, k;
+    unsigned int i;
 
 	pAssert(startOffset + size <= NV_TOTAL_MEMORY_SIZE);
 	
@@ -556,16 +550,14 @@ _plat__MarkDirtyBlocks (
 		blockEnd += 1;
 	}
 
+	DMSG("Marking blocks %d to %d dirty", blockStart, blockEnd);
     // Dirty block range
 	for (i = blockStart; i < blockEnd; i++) {
-
-        // BlockMap index/mask
-        j = BLOCKMAP_INDEX(i);
-        k = BLOCKMAP_MASK(i);
-
         // Mark dirty
-		s_blockMap[j] |= (0x1ULL << k);
+		s_blockMap[i] = TRUE;
 	}
+
+	s_dirty = TRUE;
 }
 
 //***_plat__NvMemoryWrite()
