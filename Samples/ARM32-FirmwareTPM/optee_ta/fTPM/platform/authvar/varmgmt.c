@@ -112,6 +112,11 @@ UpdateOffsets(
 VOID
 DumpAuthvarMemoryImpl(VOID);
 
+VOID
+MergeAdjacentBlocks (
+    PUEFI_VARIABLE FirstElement
+);
+
 BOOLEAN
 ReclaimVariable(
     PUEFI_VARIABLE pVar
@@ -167,8 +172,11 @@ IsSecureBootVar(
  * list. This list is represented via relative offset values in each block.
  * 
  * For each block:
- *      - Is the space used smaller than the allocated space (not less
- *          than min alignment)?
+ *      - Previous runs of the memory reclamation code may have removed
+ *          a variable which broke another variable into multiple blocks.
+ *          Merge these adjacent blocks into a single large block.
+ *      - Is the space used by the current block smaller than the 
+ *          allocated space (not less than min alignment)?
  *      - Or has the variable been deleted?
  *      - If yes to either then find the next variable, skipping over
  *          deleted variables along the way.
@@ -336,6 +344,67 @@ TrackOffset(
     return 0;
 }
 
+VOID
+MergeAdjacentBlocks (PUEFI_VARIABLE FirstBlock)
+/*++
+    Routine Description:
+
+        Merge all adjacent blocks of a variable together.
+        This may occur when another variable was deleted in between
+        the linked blocks.
+
+        The first block is expanded to include the next adjacent block's
+        allocated space, and the next offset is updated. The data from
+        the adjacent block is then added to the first. All subsequent
+        blocks, if they are also adjacent to the new expanded block, are
+        merged.
+
+    Arguments:
+
+        pVar - Pointer to a block of a variable which should be
+            merged with any adjacent elements if they exist. This block
+            does not need to be the head of the list.
+--*/
+{
+    PUEFI_VARIABLE AdjacentBlock;
+    UINT32 SourceOffset, DestinationOffset, MoveSize;
+
+    DMSG("Checking for merge: NO: 0x%lx, nAC: 0x%x", FirstBlock->NextOffset, FirstBlock->AllocSize);
+
+    while (FirstBlock->NextOffset != 0 && 
+            FirstBlock->NextOffset == FirstBlock->AllocSize) {
+        DMSG("Variable at 0x%lx has an adjacent block", (UINT_PTR)FirstBlock);
+        AdjacentBlock = (PUEFI_VARIABLE)(FirstBlock->BaseAddress + FirstBlock->NextOffset);
+
+        if ((UINT_PTR)(AdjacentBlock + AdjacentBlock->AllocSize) >= (UINT_PTR)&(s_NV[s_nvLimit]))
+        {
+            // Sign of corruption, we don't want to add unknown data to a variable.
+            TEE_Panic(TEE_ERROR_BAD_STATE);
+        }
+
+        if (AdjacentBlock->NextOffset != 0)
+        {
+            DMSG("Merged block will have next offset 0x%lx", AdjacentBlock->NextOffset + FirstBlock->AllocSize);
+            FirstBlock->NextOffset = AdjacentBlock->NextOffset + FirstBlock->AllocSize;
+        } else {
+            DMSG("Merged block will have offset 0");
+            FirstBlock->NextOffset = 0;
+        }
+        DMSG("Merged block will have allocation size 0x%x", FirstBlock->AllocSize + AdjacentBlock->AllocSize);
+        FirstBlock->AllocSize += AdjacentBlock->AllocSize;
+        MoveSize = AdjacentBlock->DataSize;
+        DMSG("Merged block will have data size (0x%x+0x%x) = 0x%x", FirstBlock->DataSize, AdjacentBlock->DataSize, FirstBlock->DataSize + AdjacentBlock->DataSize);
+
+        SourceOffset = (AdjacentBlock->BaseAddress + AdjacentBlock->DataOffset) - (UINT_PTR)s_NV;
+        DestinationOffset = (FirstBlock->BaseAddress + FirstBlock->DataOffset + FirstBlock->DataSize) - (UINT_PTR)s_NV;
+        DMSG("Moving 0x%x bytes from 0x%lx to 0x%lx", MoveSize, (AdjacentBlock->BaseAddress + AdjacentBlock->DataOffset), (FirstBlock->BaseAddress + FirstBlock->DataOffset + FirstBlock->DataSize));
+        _plat__NvMemoryMove(SourceOffset, DestinationOffset, MoveSize);
+        
+        FirstBlock->DataSize += MoveSize;
+        _plat__MarkDirtyBlocks(AdjacentBlock->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
+    }
+}
+
 BOOLEAN
 ReclaimVariable(
     PUEFI_VARIABLE pVar
@@ -384,6 +453,16 @@ ReclaimVariable(
         newVariableSize = 0;
         wasDeleted = TRUE;
     } else {
+        // If possible, merge adjacent blocks which are fragmented.
+        MergeAdjacentBlocks(pVar);
+
+        // If this variable still has multiple blocks it may be necessary to update
+        // the offsets as memory is reclaimed.
+        DMSG("Var at 0x%lx has offset 0x%lx", (UINT_PTR)pVar, pVar->NextOffset);
+        if (pVar->NextOffset) {
+            TrackOffset(pVar);
+        }
+
         DMSG("Offset:0x%lx, Size:0x%x", pVar->DataOffset, pVar->DataSize);
         newVariableSize = pVar->DataOffset + pVar->DataSize;
     }
@@ -588,12 +667,6 @@ AuthVarInitStorage(
                 DMSG("Adding variable to lists");
                 InsertTailList(&VarInfo[varType].Head, &pVar->List);
             }
-            // If this variable has multiple components it may be necessary to update
-            // the offsets as memory is reclaimed.
-            DMSG("Var at 0x%lx has offset 0x%lx", (UINT_PTR)pVar, pVar->NextOffset);
-            if (pVar->NextOffset) {
-                TrackOffset(pVar);
-            }
         }
 
         // Attempt to reclaim unused memory from the current variable,
@@ -607,6 +680,9 @@ AuthVarInitStorage(
         DMSG("Do: 0x%lx is less than 0x%lx?",((UINT_PTR)pVar - (UINT_PTR)s_NV),s_nextFree);
         DumpAuthvarMemory();
     } while (((UINT_PTR)pVar - (UINT_PTR)s_NV) < s_nextFree);
+
+    authVarState.NvEnd = s_nextFree;
+    _admin__SaveAuthVarState(&authVarState);
 
     // No need to commit NV changes to disk now, wait until data has been modified.
     return 1;
