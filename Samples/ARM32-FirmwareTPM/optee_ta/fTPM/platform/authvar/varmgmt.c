@@ -1141,6 +1141,7 @@ DeleteVariable(
     ATTRIBUTES      Attributes
 )
 {
+    UINT_PTR NextOffset;
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
@@ -1148,19 +1149,17 @@ DeleteVariable(
         TEE_Free((PBYTE)Var->NameOffset);
         TEE_Free((PBYTE)Var);
     } else {
-        // First clear any further appended elements.
-        DMSG("Deleting variable at 0x%lx", (UINT_PTR)Var);
-        if(Var->NextOffset) {
-            DMSG("Recursion");
-            DeleteVariable((PUEFI_VARIABLE)(Var->BaseAddress + Var->NextOffset),
-                            VarType,
-                            Attributes);
-        }
-        DMSG("Clearing memory at 0x%lx (offset 0x%lx, + 0x%x)",(UINT_PTR)&(Var->VendorGuid), (UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID));
-        _plat__NvMemoryWrite((UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID), &GUID_NULL);
-        _plat__NvMemoryClear((UINT_PTR)&(Var->Attributes.Flags) - (UINT_PTR)s_NV, sizeof(Var->Attributes.Flags));
-        DMSG("Deleted GUID:");
-        DHEXDUMP(&(Var->VendorGuid), sizeof(GUID));
+        do {
+            DMSG("Deleting variable at 0x%lx", (UINT_PTR)Var);
+            DMSG("Clearing memory at 0x%lx (offset 0x%lx, + 0x%x)",(UINT_PTR)&(Var->VendorGuid), (UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID));
+            _plat__NvMemoryWrite((UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID), &GUID_NULL);
+            _plat__NvMemoryClear((UINT_PTR)&(Var->Attributes.Flags) - (UINT_PTR)s_NV, sizeof(Var->Attributes.Flags));
+            DMSG("Deleted GUID:");
+            DHEXDUMP(&(Var->VendorGuid), sizeof(GUID));
+
+            NextOffset = Var->NextOffset;
+            Var = (PUEFI_VARIABLE)(Var->BaseAddress + NextOffset);
+        } while (NextOffset != 0);
     }
 
     DumpAuthvarMemory();
