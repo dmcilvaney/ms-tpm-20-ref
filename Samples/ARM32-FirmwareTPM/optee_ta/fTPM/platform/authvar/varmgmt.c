@@ -211,8 +211,10 @@ DumpAuthvarMemoryImpl(VOID)
     int mainCounter = 0, linkCounter;
     bool linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
 
-    DMSG("================================");
-    DMSG("Start of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
+    DMSG("\t================================");
+    DMSG("\tStart of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
+    DMSG("");
+    DMSG("\t#Num:  Offset( Address ) | Allocation( Data Size) | State | Link To | <--->");
     while (((UINT_PTR)pVar - (UINT_PTR)s_NV) < s_nextFree) {
         
         if (pVar->AllocSize == 0) {
@@ -234,15 +236,22 @@ DumpAuthvarMemoryImpl(VOID)
             linkBitArray[linkCounter] = true;
         }
 
+        UINT_PTR offset = pVar->BaseAddress - (UINT_PTR)s_NV;
         //Check if variable has been deleted
-        const char *type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  "VAL" : "DEL");
+        const char *type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  "   " : "DEL");
         //Check if its a link variable
-        const char *linked = (linkBitArray[mainCounter] ? "LNK" : "   ");
+        const char *linkIn = (linkBitArray[mainCounter] ? "<-" : "");
+        const char *linkMiddle = (linkBitArray[mainCounter] || pVar->NextOffset ? "--" : "");
+        const char *linkOut = (pVar->NextOffset ? "->" : "");
 
-        DMSG("%s-0x%x(+0x%lx):    (#%d:%s,Link:%d)", linked, pVar->AllocSize, (UINT_PTR)pVar, mainCounter, type, linkCounter);
+        DMSG("\t#%3d: %#7lx(%#9lx) | A: %#7x(D: %#7x) |  %s  | Next:%-2d | %s%s%s",
+                mainCounter, offset, (UINT_PTR)pVar, pVar->AllocSize, pVar->DataSize, type,
+                linkCounter, linkIn, linkMiddle, linkOut);
+        //DMSG("%s-0x%x(+0x%lx):    (#%d:%s,Link:%d)", linked, pVar->AllocSize, (UINT_PTR)pVar, mainCounter, type, linkCounter);
         pVar = (PUEFI_VARIABLE)((UINT_PTR)pVar + pVar->AllocSize);
     }
-    DMSG("End of Authvar Memory at 0x%lx: (max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
+    DMSG("\tEnd of authvar memory at 0x%lx: (Max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
+    DMSG("\t================================");
 
     // If we run too fast, the serial print can't keep up
     // OP-TEE uses very aggresive optimization, need to work
@@ -258,7 +267,7 @@ DumpAuthvarMemoryImpl(VOID)
     for(counter = 1; counter < 10000000; counter++) {
         collector = (collector + 1) * mainCounter;
     }
-    DMSG("================================%d", collector);
+    DMSG("%d", collector);
 }
 
 VOID
