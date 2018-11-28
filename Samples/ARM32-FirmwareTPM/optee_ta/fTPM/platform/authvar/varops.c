@@ -416,7 +416,19 @@ SetVariable(
     DHEXDUMP(&vendorGuid,sizeof(vendorGuid));
 
     attrib.Flags = SetParam->Attributes.Flags;
-    varName = (PWSTR)(&SetParam->Payload[SetParam->OffsetName]);
+    if ((UINT_PTR)&SetParam->Payload[SetParam->OffsetName] != 
+        ROUNDUP((UINT_PTR)&SetParam->Payload[SetParam->OffsetName], __alignof__(WCHAR)))
+    {
+        EMSG("Received unaligned data");
+        varName = NULL;
+        TEE_Panic(TEE_ERROR_BAD_PARAMETERS);
+    } else {
+        varName = (PWSTR)ROUNDUP((UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
+                                    __alignof__(WCHAR));
+        DMSG("Varname alignment: 0x%lx rounded to 0x%lx",
+                (UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
+                (UINT_PTR)varName);
+    }
     data = &SetParam->Payload[SetParam->OffsetData];
 
     // Don't consider NULL character in Length

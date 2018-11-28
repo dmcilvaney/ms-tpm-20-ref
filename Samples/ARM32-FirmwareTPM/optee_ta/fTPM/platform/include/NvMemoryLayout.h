@@ -67,7 +67,7 @@
 #define NV_AUTHVAR_SIZE     (NV_TOTAL_MEMORY_SIZE - (NV_TPM_STORAGE_SIZE + NV_ADMIN_STATE_SIZE))
 #define NV_AUTHVAR_START    (NV_TOTAL_MEMORY_SIZE - NV_AUTHVAR_SIZE)
 // Align all authvar structs to 64 bit alignment
-#define NV_AUTHVAR_ALIGNMENT     (0x8)
+#define NV_AUTHVAR_ALIGNMENT     __alignof__(UINT64)
 
 //
 // Note that NV_TOTAL_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.

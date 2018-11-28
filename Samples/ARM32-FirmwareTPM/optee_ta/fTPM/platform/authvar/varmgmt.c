@@ -98,7 +98,7 @@ GUID GUID_NULL = { 0, 0, 0,{ 0, 0, 0, 0, 0, 0, 0, 0 } };
 //
 // Memory Management Prototypes
 //
-UINT32
+VOID
 TrackOffset(
     PUEFI_VARIABLE pVar
 );
@@ -316,7 +316,7 @@ UpdateOffsets(
     }
 }
 
-UINT32
+VOID
 TrackOffset(
     PUEFI_VARIABLE pVar
 )
@@ -331,17 +331,12 @@ TrackOffset(
 
         pVar - Variable to track
 
-    Returns:
-
-        0 - Success
-
-        1 - Failure
-
 --*/
 {
     PMEMORY_RECLAMATION_NODE newNode = TEE_Malloc(sizeof(MEMORY_RECLAMATION_NODE), TEE_USER_MEM_HINT_NO_FILL_ZERO);
     if (!newNode) {
-        return 1;
+        EMSG("Out of memory during initialization, fatal error");
+        TEE_Panic(TEE_ERROR_OUT_OF_MEMORY);
     }
 
     newNode->pVar = pVar;
@@ -350,7 +345,6 @@ TrackOffset(
     InsertTailList(&MemoryReclamationList, &(newNode->List));
     DMSG("F 0x%lx, B 0x%lx", (UINT_PTR)MemoryReclamationList.Flink, (UINT_PTR)MemoryReclamationList.Blink);
     DMSG("Tracking a variable which points to 0x%lx (0x%lx)", newNode->NV_Offset, newNode->NV_Offset + (UINT_PTR)s_NV);
-    return 0;
 }
 
 VOID
@@ -531,7 +525,7 @@ ReclaimVariable(
         if(head != cur) {
             DMSG("List broken?");
             DMSG("Was looking for 0x%lx",((PMEMORY_RECLAMATION_NODE)head->Flink)->NV_Offset);
-            for(;;);
+            TEE_Panic(TEE_ERROR_BAD_STATE);
         }
     } else {
         // Move the next variable into the extra space, then
@@ -627,6 +621,8 @@ AuthVarInitStorage(
         return 0;
     }
 
+    DMSG("s_NV enforced alignment is 0x%x bytes", NV_AUTHVAR_ALIGNMENT);
+
     // Init in-memory lists
     for (i = 0; i < VTYPE_END; i++) {
         InitializeListHead(&(VarInfo[i].Head));
@@ -655,7 +651,7 @@ AuthVarInitStorage(
             DMSG("Alignment error! 0x%lx, 0x%lx",
                 ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT),
                 (UINT_PTR)&s_NV[s_nextFree] );
-                for(;;);
+            TEE_Panic(TEE_ERROR_BAD_STATE);
     }
     pVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)s_NV + StartingOffset, NV_AUTHVAR_ALIGNMENT);
 
@@ -944,7 +940,7 @@ CreateVariable(
                 DMSG("Alignment error! 0x%lx, 0x%lx",
                     ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT),
                     (UINT_PTR)&s_NV[s_nextFree] );
-                    for(;;);
+                TEE_Panic(TEE_ERROR_BAD_STATE);
         }
         newVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT);
 
@@ -1311,7 +1307,7 @@ AppendVariable(
                     DMSG("Alignment error! 0x%lx, 0x%lx",
                         ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT),
                         (UINT_PTR)&s_NV[s_nextFree] );
-                        for(;;);
+                    TEE_Panic(TEE_ERROR_BAD_STATE);
             }
             newVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT);
             DMSG("New variable at 0x%lx", (UINT_PTR)newVar);

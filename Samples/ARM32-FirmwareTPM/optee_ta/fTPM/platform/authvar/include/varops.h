@@ -92,7 +92,7 @@ typedef struct _UEFI_VARIABLE
     LIST_ENTRY List;            // Flink/Blink
     GUID VendorGuid;            // Associated GUID
     ATTRIBUTES Attributes;      // UEFI variable attributes
-    USHORT NameSize;            // Length of var name in bytes
+    USHORT NameSize;            // Length of var name in bytes, including null terminator
     UINT_PTR NameOffset;         // Offset to var name from BaseAddress
     UINT32 AllocSize;           // Total size of this variable entry
     UINT32 ExtAttribSize;       // Size of extended attributes (auth only)
