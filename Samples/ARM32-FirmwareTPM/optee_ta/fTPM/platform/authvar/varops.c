@@ -106,7 +106,7 @@ GetVariable(
     }
 
     // Validation of var name size
-    if (((GetParam->NameSize) = 0) || (GetParam->NameSize % sizeof(WCHAR)))
+    if (((GetParam->NameSize) == 0) || (GetParam->NameSize % sizeof(WCHAR)))
     {
         DMSG("Bad name size %d, or not multiple of %d", (uint32_t)GetParam->NameSize, sizeof(WCHAR));
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -131,6 +131,13 @@ GetVariable(
     unicodeName.Buffer = varName;
     unicodeName.Length = GetParam->NameSize - sizeof(WCHAR);
     unicodeName.MaximumLength = GetParam->NameSize;
+
+    if(unicodeName.Buffer[(unicodeName.Length / sizeof(WCHAR))] != L'\0')
+    {
+        DMSG("Unicode string is not null-terminated");
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
+    }
 
     // Find the variable
     SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
@@ -274,8 +281,15 @@ GetNextVariableName(
         // Init for variable search
         varName = (PWSTR)(GetNextParam->Name);
         unicodeName.Buffer = varName;
-        unicodeName.Length = (UINT_PTR)varName - sizeof(WCHAR);
+        unicodeName.Length = varNameLen - sizeof(WCHAR);
         unicodeName.MaximumLength = varNameLen;
+
+        if(unicodeName.Buffer[unicodeName.Length/sizeof(WCHAR)] != L'\0')
+        {
+            DMSG("Unicode string is not null-terminated");
+            status = TEE_ERROR_BAD_PARAMETERS;
+            goto Cleanup;
+        }   
 
         // Get the next variable in the list
         SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
@@ -358,7 +372,7 @@ SetVariable(
     GUID vendorGuid;
     UNICODE_STRING unicodeName;
     PBYTE data, content;
-    PWSTR varName;
+    PWSTR varName = NULL;
     PUEFI_VARIABLE varPtr;
     TEE_Result status;
     UINT32 varNameSize;
@@ -435,6 +449,14 @@ SetVariable(
     unicodeName.Buffer = varName;
     unicodeName.Length = varNameSize - sizeof(WCHAR);
     unicodeName.MaximumLength = varNameSize;
+
+    if(unicodeName.Buffer[unicodeName.Length/sizeof(WCHAR)] != L'\0')
+    {
+        DMSG("Unicode string is not null-terminated");
+        DHEXDUMP(&unicodeName.Buffer[unicodeName.Length/sizeof(WCHAR)], sizeof(WCHAR));
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
+    }
 
     // Attribute validation
     if ((attrib.Flags & (~EFI_KNOWN_ATTRIBUTES)) != 0)

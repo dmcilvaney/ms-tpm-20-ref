@@ -831,7 +831,7 @@ CreateVariable(
         }
 
         // Attempt allocation for variable name
-        if (!(newStr  = TEE_Malloc(UnicodeName->MaximumLength * sizeof(wchar_t), TEE_USER_MEM_HINT_NO_FILL_ZERO)))
+        if (!(newStr  = TEE_Malloc(UnicodeName->MaximumLength, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
         {
             TEE_Free(newVar);
             status = TEE_ERROR_OUT_OF_MEMORY;
@@ -859,7 +859,7 @@ CreateVariable(
         newVar->BaseAddress = 0;
 
         // Init/copy variable name
-        newVar->NameSize = UnicodeName->MaximumLength * sizeof(wchar_t);
+        newVar->NameSize = UnicodeName->MaximumLength;
         newVar->NameOffset = (UINT_PTR)newStr;
         memmove(newStr, UnicodeName->Buffer, newVar->NameSize);
 
@@ -904,7 +904,7 @@ CreateVariable(
         }
 
         // Get strlen of unicode name
-        uStrLen = UnicodeName->MaximumLength * sizeof(wchar_t);
+        uStrLen = UnicodeName->MaximumLength;
 
         // Get size if extended attributes (if provided)
         if (ExtAttributes)
