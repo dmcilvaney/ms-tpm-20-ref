@@ -129,10 +129,10 @@ GetVariable(
     // Init local name string
     memset(&unicodeName, 0, sizeof(unicodeName));
     unicodeName.Buffer = varName;
-    unicodeName.Length = GetParam->NameSize - sizeof(WCHAR);
-    unicodeName.MaximumLength = GetParam->NameSize;
+    unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
+    unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
 
-    if(unicodeName.Buffer[(unicodeName.Length / sizeof(WCHAR))] != L'\0')
+    if(unicodeName.MaximumLength > GetParam->NameSize)
     {
         DMSG("Unicode string is not null-terminated");
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -281,15 +281,15 @@ GetNextVariableName(
         // Init for variable search
         varName = (PWSTR)(GetNextParam->Name);
         unicodeName.Buffer = varName;
-        unicodeName.Length = varNameLen - sizeof(WCHAR);
-        unicodeName.MaximumLength = varNameLen;
+        unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
+        unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
 
-        if(unicodeName.Buffer[unicodeName.Length/sizeof(WCHAR)] != L'\0')
+        if(unicodeName.MaximumLength > varNameLen)
         {
             DMSG("Unicode string is not null-terminated");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
-        }   
+        }
 
         // Get the next variable in the list
         SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
@@ -447,13 +447,12 @@ SetVariable(
 
     // Don't consider NULL character in Length
     unicodeName.Buffer = varName;
-    unicodeName.Length = varNameSize - sizeof(WCHAR);
-    unicodeName.MaximumLength = varNameSize;
+    unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
+    unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
 
-    if(unicodeName.Buffer[unicodeName.Length/sizeof(WCHAR)] != L'\0')
+    if(unicodeName.MaximumLength > varNameSize)
     {
         DMSG("Unicode string is not null-terminated");
-        DHEXDUMP(&unicodeName.Buffer[unicodeName.Length/sizeof(WCHAR)], sizeof(WCHAR));
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
