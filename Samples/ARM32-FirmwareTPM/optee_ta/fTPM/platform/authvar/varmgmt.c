@@ -1522,7 +1522,6 @@ ReplaceVariable(
         if(nextOffset) {
             DMSG("Continuing on to next element");
             // Calculate pointer to next set of appended data
-            Var = varPtr;
             varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + nextOffset);
         }
 
