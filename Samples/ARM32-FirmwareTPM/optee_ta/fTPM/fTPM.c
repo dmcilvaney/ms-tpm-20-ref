@@ -432,7 +432,7 @@ static TEE_Result fTPM_AuthVar_Get(
     Status = GetVariable(GetParamSize, GetParam, &GetResultSize, GetResult);
     DMSG("Get result 0x%x size: 0x%x", Status, GetResultSize);
 
-    // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
+    // Authvars driver expects TEE_SUCCESS, TEE_ERROR_SHORT_BUFFER,
     // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
     // are handled as errors. Return values are also passed back through
     // parameter 2b to be handled by the command specific part of the driver.
@@ -486,7 +486,7 @@ static TEE_Result fTPM_AuthVar_GetNext(
 
     Params[2].value.a = GetNextResultSize;
 
-    // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
+    // Authvars driver expects TEE_SUCCESS, TEE_ERROR_SHORT_BUFFER,
     // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
     // are handled as errors. Return values are also passed  back through
     // parameter 2b to be handled by the command specific part of the driver.
@@ -588,7 +588,7 @@ static TEE_Result fTPM_AuthVar_Query(
     // Call VarOps
     Status = QueryVariableInfo(QueryParamSize, QueryParam, QueryResultSize, QueryResult);
 
-    // Authvars driver expects TEEC_SUCCESS, TEE_ERROR_SHORT_BUFFER,
+    // Authvars driver expects TEE_SUCCESS, TEE_ERROR_SHORT_BUFFER,
     // or TEEC_ERROR_ITEM_NOT_FOUND as a return value. All other values
     // are handled as errors. Return values are also passed  back through
     // parameter 2b to be handled by the command specific part of the driver.

@@ -554,7 +554,7 @@ SetVariable(
         {
             DMSG("set delete");
             RemoveEntryList((PLIST_ENTRY) varPtr);
-            status = DeleteVariable(varPtr, varType, attrib);
+            status = DeleteNodes(varPtr);
             goto Cleanup;
         }
 
@@ -564,7 +564,6 @@ SetVariable(
             DMSG("set Append");
             status = AppendVariable(
                 varPtr,
-                varType,
                 attrib,
                 &extAttrib,
                 data,
@@ -583,7 +582,6 @@ SetVariable(
             DMSG("Replace");
             status = ReplaceVariable(
                 varPtr,
-                varType,
                 attrib,
                 &extAttrib,
                 data,
@@ -654,6 +652,7 @@ SetVariable(
     {
         DMSG("set");
         // REVISIT: Implement volatile authenticated variables only if needed.
+        // We store them in NV and mark them so they are deleted on init.
         if (attrib.TimeBasedAuth)
         {
             EMSG("Set variable NO AUTH");

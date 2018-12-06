@@ -113,13 +113,13 @@ VOID
 DumpAuthvarMemoryImpl(VOID);
 
 VOID
-MergeAdjacentBlocks (
-    PUEFI_VARIABLE FirstElement
+MergeAdjacentNodes (
+    PUEFI_VARIABLE FirstNode
 );
 
 BOOLEAN
-ReclaimVariable(
-    PUEFI_VARIABLE pVar
+ReclaimNode(
+    PUEFI_VARIABLE Node
 );
 
 UINT32
@@ -167,34 +167,32 @@ IsSecureBootVar(
  * are cleared during initialization of the NV memory.
  * 
  * Each node has an actual size, and an allocated size (alligned). The
- * NV backed byte array (s_NV) is iterated through to find each block.
+ * NV backed byte array (s_NV) is iterated through to find each node.
  * 
- * A variable's data may be spread across multiple blocks via a linked
- * list. This list is represented via relative offset values in each block.
+ * A variable's data may be spread across multiple nodes via a linked
+ * list. This list is represented via relative offset values in each node.
  * 
- * For each block:
+ * For each node:
  *      - Previous runs of the memory reclamation code may have removed
- *          a variable which broke another variable into multiple blocks.
- *          Merge these adjacent blocks into a single large block.
- *      - Is the space used by the current block smaller than the 
+ *          a variable which broke another variable into multiple node.
+ *          Merge these adjacent node into a single large node.
+ *      - Is the space used by the current node smaller than the 
  *          allocated space (not less than min alignment)?
  *      - Or has the variable been deleted?
  *      - If yes to either then find the next variable, skipping over
  *          deleted variables along the way.
- *      - Move the next (non-deleted) block forward into the free space.
- *      - Increase the allocation size of that block so there is no
- *          gap left. When the block is processed that gap will be
+ *      - Move the next (non-deleted) node forward into the free space.
+ *      - Increase the allocation size of that node so there is no
+ *          gap left. When the node is processed that gap will be
  *          closed.
- *      - If the current block has a NextOffset link to another node
- *          in a list:
- *              - Keep track of the current node so the offset can be
+ *      - If the current node has a NextOffset link to another node
+ *          in the list:
+ *              - Keep track of the current node so its offset can be
  *                  updated if the next node is moved forwards.
- *      - Check the list of tracked blocks to see if any were linked
- *          to the next block, if so update the link and remove them
- *          from the list since the next block has reached it's final
- *          location.
- *      - TODO:
- *          Merge linked blocks as we find them
+ *      - Check the list of tracked node to see if any were linked
+ *          to the next node (which we may have just moved into reclaimed space),
+ *          if so update the link and remove them from the list since 
+ *          the next block has reached it's final location.
  */
 
 CHAR*
@@ -228,17 +226,17 @@ DumpAuthvarMemoryImpl(VOID)
     const UINT32 maxNameLength = 50;
     CHAR convertedName[maxNameLength];
 
-    int mainCounter = 0, linkCounter;
-    bool linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
+    UINT32 mainCounter = 0, linkCounter;
+    BOOL isLinkedTo[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
 
-    DMSG("================================");
-    DMSG("Start of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
-    DMSG("");
-    DMSG("#Num:                              |Offset( Address ) | Alloc( Data Size) | State | Link To | <--->");
+    FMSG("================================");
+    FMSG("Start of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
+    FMSG("");
+    FMSG("#Num:                              |Offset( Address ) | Alloc( Data Size) | State | Link To | <--->");
     while (((UINT_PTR)pVar - (UINT_PTR)s_NV) < s_nextFree) {
         
         if (pVar->AllocSize == 0) {
-            DMSG("ERROR! Memory is bad!");
+            FMSG("ERROR! Memory is bad!");
             break;
         }
 
@@ -247,13 +245,13 @@ DumpAuthvarMemoryImpl(VOID)
         if (pVar->NextOffset) {
             pLinkVar = pVar;
             linkCounter = mainCounter;
-            // Run through the list until we find our node, keeping track of numbering on the way
+            // Run through the list until we find our linked node, keeping track of numbering on the way
             // Note: pVar->BaseAddress may not have been updated yet, use actual address.
             while((UINT_PTR)pLinkVar != (UINT_PTR)pVar + pVar->NextOffset) {
                 linkCounter++;
                 pLinkVar = (PUEFI_VARIABLE)((UINT_PTR)pLinkVar + pLinkVar->AllocSize);
             }
-            linkBitArray[linkCounter] = true;
+            isLinkedTo[linkCounter] = true;
         }
 
         const char *name = pVar->NameOffset ? 
@@ -263,20 +261,20 @@ DumpAuthvarMemoryImpl(VOID)
 
         UINT_PTR offset = pVar->BaseAddress - (UINT_PTR)s_NV;
         //Check if variable has been deleted
-        const char *type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  "   " : "DEL");
+        const PCCH type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  "   " : "DEL");
         //Check if its a link variable
-        const char *linkIn = (linkBitArray[mainCounter] ? "<-" : "");
-        const char *linkMiddle = (linkBitArray[mainCounter] || pVar->NextOffset ? "--" : "");
-        const char *linkOut = (pVar->NextOffset ? "->" : "");
+        const PCCH linkIn = (isLinkedTo[mainCounter] ? "<-" : "");
+        const PCCH linkMiddle = (isLinkedTo[mainCounter] || pVar->NextOffset ? "--" : "");
+        const PCCH linkOut = (pVar->NextOffset ? "->" : "");
 
-        DMSG("#%3d:%-30s|%#7lx(%#9lx)| A:%#6x(D:%#6x) | %s | Next:%-2d | %s%s%s",
+        FMSG("#%3d:%-30s|%#7lx(%#9lx)| A:%#6x(D:%#6x) | %s | Next:%-2d | %s%s%s",
                 mainCounter, name, offset, (UINT_PTR)pVar, pVar->AllocSize, pVar->DataSize, type,
                 linkCounter, linkIn, linkMiddle, linkOut);
         //DMSG("%s-0x%x(+0x%lx):    (#%d:%s,Link:%d)", linked, pVar->AllocSize, (UINT_PTR)pVar, mainCounter, type, linkCounter);
         pVar = (PUEFI_VARIABLE)((UINT_PTR)pVar + pVar->AllocSize);
     }
-    DMSG("End of authvar memory at 0x%lx: (Max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
-    DMSG("================================");
+    FMSG("End of authvar memory at 0x%lx: (Max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
+    FMSG("================================");
 
     // If we run too fast, the serial print can't keep up
     // OP-TEE uses very aggresive optimization, need to work
@@ -288,7 +286,7 @@ DumpAuthvarMemoryImpl(VOID)
             collector = (collector + 1) * mainCounter;
         }
     }
-    DMSG("%d", collector);
+    FMSG("%d", collector);
 }
 #endif
 
@@ -301,37 +299,39 @@ UpdateOffsets(
 
     Routeine Description:
 
-        Updates any link to the node at NVOffset such that it will now
-        point to NVOffset-ShrinkAmount
+        Updates any nodes which point to NVOffset bytes into s_NV such that it will now
+        point to (NVOffset - ShrinkAmount).
 
-        Removes any nodes which will no longer be affected by subsequent
+        Stops tracking any nodes which will no longer be affected by subsequent
         changes to the layout.
 
     Arguments:
 
-        CurrentNVOffset - Offset of the current variable.
+        NVOffset - Offset into s_NV of the old location of the node which has been moved
         
-        ShrinkAmount - How much the stored variables have been shrunk
+        ShrinkAmount - How much the stored node was moved forward in memory
 --*/
 {
     PLIST_ENTRY head = &MemoryReclamationList;
     PLIST_ENTRY cur = head->Flink;
     PMEMORY_RECLAMATION_NODE node;
 
-    DMSG("Updating nodes which point to 0x%lx (0x%lx), shrink:0x%x)", NVOffset, NVOffset + (UINT_PTR)s_NV, ShrinkAmount);
-    DMSG("Cur 0x%lx, head 0x%lx", (UINT_PTR)cur, (UINT_PTR)head);
+    FMSG("Updating nodes which point to 0x%lx (0x%lx), shrink:0x%x)", NVOffset, NVOffset + (UINT_PTR)s_NV, ShrinkAmount);
+    // Check each tracked block and update it if its nextOffset value
+    // is no longer correct.
     while ((cur) && (cur != head)) {
         node = (PMEMORY_RECLAMATION_NODE)cur;
-        DMSG("Node offset: 0x%lx", node->NV_Offset);
         if(node->NV_Offset == NVOffset) {
             // No longer need to track this node
-            DMSG("Done with the node at 0x%lx", (UINT_PTR)node->pVar);
-            DMSG("Offset was 0x%lx, now its 0x%lx", node->NV_Offset, node->NV_Offset - ShrinkAmount);
-            DMSG("(0x%lx -> 0x%lx)", node->NV_Offset + (UINT_PTR)s_NV, node->NV_Offset - ShrinkAmount + (UINT_PTR)s_NV);
-            node->pVar->NextOffset -= ShrinkAmount;
+            FMSG("Done with the node at 0x%lx", (UINT_PTR)node->VariableNode);
+            FMSG("(0x%lx -> 0x%lx)", node->NV_Offset + (UINT_PTR)s_NV, node->NV_Offset - ShrinkAmount + (UINT_PTR)s_NV);
+            node->VariableNode->NextOffset -= ShrinkAmount;
             RemoveEntryList(cur);
             cur = cur->Flink;
             TEE_Free(node);
+
+            // Nodes will only have one parent, no need to look for more.
+            break;
         } else {
             cur = cur->Flink;
         }
@@ -340,155 +340,162 @@ UpdateOffsets(
 
 VOID
 TrackOffset(
-    PUEFI_VARIABLE pVar
+    PUEFI_VARIABLE Node
 )
 /*++
 
     Routine Description:
 
-        Track this variable so any changes to the memory
+        Track this node so any changes to the memory
         layout may be reflected in its NextOffset value.
 
     Arguments:
 
-        pVar - Variable to track
+        Node - Variable node to track
 
 --*/
 {
-    PMEMORY_RECLAMATION_NODE newNode = TEE_Malloc(sizeof(MEMORY_RECLAMATION_NODE), TEE_USER_MEM_HINT_NO_FILL_ZERO);
-    if (!newNode) {
+    PMEMORY_RECLAMATION_NODE newReclamationNode = TEE_Malloc(sizeof(MEMORY_RECLAMATION_NODE),
+                                                    TEE_USER_MEM_HINT_NO_FILL_ZERO);
+    if (!newReclamationNode) {
         EMSG("Out of memory during initialization, fatal error");
         TEE_Panic(TEE_ERROR_OUT_OF_MEMORY);
     }
 
-    newNode->pVar = pVar;
-    newNode->NV_Offset = (UINT_PTR)pVar + pVar->NextOffset - (UINT_PTR)s_NV;
-    DMSG("F 0x%lx, B 0x%lx", (UINT_PTR)MemoryReclamationList.Flink, (UINT_PTR)MemoryReclamationList.Blink);
-    InsertTailList(&MemoryReclamationList, &(newNode->List));
-    DMSG("F 0x%lx, B 0x%lx", (UINT_PTR)MemoryReclamationList.Flink, (UINT_PTR)MemoryReclamationList.Blink);
-    DMSG("Tracking a variable which points to 0x%lx (0x%lx)", newNode->NV_Offset, newNode->NV_Offset + (UINT_PTR)s_NV);
+    newReclamationNode->VariableNode = Node;
+    newReclamationNode->NV_Offset = (UINT_PTR)Node + Node->NextOffset - (UINT_PTR)s_NV;
+    InsertTailList(&MemoryReclamationList, &(newReclamationNode->List));
+    FMSG("Tracking a variable which points to 0x%lx", newReclamationNode->NV_Offset + (UINT_PTR)s_NV);
 }
 
 VOID
-MergeAdjacentBlocks (PUEFI_VARIABLE FirstBlock)
+MergeAdjacentNodes (PUEFI_VARIABLE FirstNode)
 /*++
     Routine Description:
 
-        Merge all adjacent blocks of a variable together.
+        Merge any adjacent nodes of the same variable together.
         This may occur when another variable was deleted in between
-        the linked blocks.
+        the linked nodes.
 
-        The first block is expanded to include the next adjacent block's
+        The first node is expanded to include the next adjacent node's
         allocated space, and the next offset is updated. The data from
-        the adjacent block is then added to the first. All subsequent
-        blocks, if they are also adjacent to the new expanded block, are
-        merged.
+        the adjacent node is then added to the first. All subsequent
+        nodes, if they are also adjacent to the new expanded node, are
+        also merged.
 
     Arguments:
 
-        pVar - Pointer to a block of a variable which should be
-            merged with any adjacent elements if they exist. This block
-            does not need to be the head of the list.
+        FirstNode - Pointer to a node of a variable which should be
+            merged with any adjacent nodes of the same variable if, 
+            they exist. This node does not need to be the head of the list.
 --*/
 {
-    PUEFI_VARIABLE AdjacentBlock;
-    UINT32 SourceOffset, DestinationOffset, MoveSize;
+    PUEFI_VARIABLE adjacentNode;
+    UINT32 sourceOffset, destinationOffset, moveSize;
 
-    DMSG("Checking for merge: NO: 0x%lx, nAC: 0x%x", FirstBlock->NextOffset, FirstBlock->AllocSize);
+    FMSG("Looking to merge node at 0x%lx with adjacent nodes", (UINT_PTR)FirstNode);
 
-    while (FirstBlock->NextOffset != 0 && 
-            FirstBlock->NextOffset == FirstBlock->AllocSize) {
-        DMSG("Variable at 0x%lx has an adjacent block", (UINT_PTR)FirstBlock);
-        AdjacentBlock = (PUEFI_VARIABLE)(FirstBlock->BaseAddress + FirstBlock->NextOffset);
+    while (FirstNode->NextOffset != 0 && 
+            FirstNode->NextOffset == FirstNode->AllocSize) {
+        adjacentNode = (PUEFI_VARIABLE)(FirstNode->BaseAddress + FirstNode->NextOffset);
+        FMSG("Variable has an adjacent node at 0x%lx", (UINT_PTR)FirstNode);
 
-        if ((UINT_PTR)(AdjacentBlock + AdjacentBlock->AllocSize) >= (UINT_PTR)&(s_NV[s_nvLimit]))
+        if ((UINT_PTR)(adjacentNode + adjacentNode->AllocSize) >= (UINT_PTR)&(s_NV[s_nvLimit]))
         {
             // Sign of corruption, we don't want to add unknown data to a variable.
             TEE_Panic(TEE_ERROR_BAD_STATE);
         }
 
-        if (AdjacentBlock->NextOffset != 0)
+        if (adjacentNode->NextOffset != 0)
         {
-            DMSG("Merged block will have next offset 0x%lx", AdjacentBlock->NextOffset + FirstBlock->AllocSize);
-            FirstBlock->NextOffset = AdjacentBlock->NextOffset + FirstBlock->AllocSize;
+            FirstNode->NextOffset = adjacentNode->NextOffset + FirstNode->AllocSize;
         } else {
-            DMSG("Merged block will have offset 0");
-            FirstBlock->NextOffset = 0;
+            FirstNode->NextOffset = 0;
         }
-        DMSG("Merged block will have allocation size 0x%x", FirstBlock->AllocSize + AdjacentBlock->AllocSize);
-        FirstBlock->AllocSize += AdjacentBlock->AllocSize;
-        MoveSize = AdjacentBlock->DataSize;
-        DMSG("Merged block will have data size (0x%x+0x%x) = 0x%x", FirstBlock->DataSize, AdjacentBlock->DataSize, FirstBlock->DataSize + AdjacentBlock->DataSize);
+        FMSG("Merged block will have next offset 0x%lx", adjacentNode->NextOffset + FirstNode->AllocSize);
+        FirstNode->AllocSize += adjacentNode->AllocSize;
+        FMSG("Merged block will have allocation size 0x%x", FirstNode->AllocSize);
+        moveSize = adjacentNode->DataSize;
+        FMSG("Merged block will have data size (0x%x+0x%x) = 0x%x", 
+                FirstNode->DataSize, 
+                adjacentNode->DataSize, 
+                FirstNode->DataSize + adjacentNode->DataSize);
 
-        SourceOffset = (AdjacentBlock->BaseAddress + AdjacentBlock->DataOffset) - (UINT_PTR)s_NV;
-        DestinationOffset = (FirstBlock->BaseAddress + FirstBlock->DataOffset + FirstBlock->DataSize) - (UINT_PTR)s_NV;
-        DMSG("Moving 0x%x bytes from 0x%lx to 0x%lx", MoveSize, (AdjacentBlock->BaseAddress + AdjacentBlock->DataOffset), (FirstBlock->BaseAddress + FirstBlock->DataOffset + FirstBlock->DataSize));
-        _plat__NvMemoryMove(SourceOffset, DestinationOffset, MoveSize);
+        sourceOffset = (adjacentNode->BaseAddress + adjacentNode->DataOffset) - (UINT_PTR)s_NV;
+        destinationOffset = (FirstNode->BaseAddress + FirstNode->DataOffset + FirstNode->DataSize) - (UINT_PTR)s_NV;
+        FMSG("Moving 0x%x bytes of data from 0x%lx to 0x%lx", 
+                moveSize,
+                (adjacentNode->BaseAddress + adjacentNode->DataOffset),
+                (FirstNode->BaseAddress + FirstNode->DataOffset + FirstNode->DataSize));
+        _plat__NvMemoryMove(sourceOffset, destinationOffset, moveSize);
         
-        FirstBlock->DataSize += MoveSize;
-        _plat__MarkDirtyBlocks(AdjacentBlock->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
+        FirstNode->DataSize += moveSize;
+        _plat__MarkDirtyBlocks(adjacentNode->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
     }
 }
 
 BOOLEAN
-ReclaimVariable(
-    PUEFI_VARIABLE pVar
+ReclaimNode(
+    PUEFI_VARIABLE Node
 )
 /*++
 
     Routine Description:
 
         Memory reclamation for AuthVar storage. Shrinks or
-        removes a variable if it has been deleted or had its
-        data reduced. Moves the next variable in memory to remove
+        removes a variable node if it has been deleted or had its
+        data reduced. Moves the next node in memory to remove
         gaps while increasing its allocated size. A subsequent call
-        to ReclaimMemory on that variable will similarrly attempt
-        to reclaim that wasted space.
+        to ReclaimNode on that node will similarrly attempt
+        to reclaim the wasted space.
 
         Maintains a list of nodes which may need to have their offsets
-        updated and will udpate them as needed.
+        updated and will udpate them as needed. This function guarantees
+        that s_NV will allways be internally consistent before and 
+        after calling.
 
     Arguments:
 
-        pVar - Pointer to the variable to shrink/remove
+        Node - Pointer to the variable to shrink/remove
 
     Returns:
 
-        TRUE - Variable was deleted
+        TRUE - Node was deleted
 
-        FALSE - Variable was left in place (but possibly shrunk)
+        FALSE - Node was left in place (but possibly shrunk)
 --*/
 {
-    UINT32 newVariableSize, wastedSpace, newAlloc, shrinkAmmount, deleteAmmount, nextVarOldAllocSize;
-    PUEFI_VARIABLE nextVar;
+    UINT32 newNodeSize, wastedSpace, newAlloc, shrinkAmmount, 
+            deleteAmmount, nextNodeOldAllocSize;
+    PUEFI_VARIABLE nextNode;
     BOOLEAN wasDeleted = FALSE;
 
-    DMSG("Reclaiming memory at 0x%lx\n", (UINT_PTR)pVar);
+    FMSG("Reclaiming memory at 0x%lx", (UINT_PTR)Node);
 
-    // Sanity check size field
-    if (pVar->AllocSize == 0) {
+    // If s_nextFree is not consistent with actual data, we will run into
+    // an all zero block. This is a sign of data corruption and is 
+    // considered an error.
+    if (Node->AllocSize == 0) {
         EMSG("Detected corruption in authenticated variable store");
         TEE_Panic(TEE_ERROR_BAD_STATE);
     }
 
     // Check if the variable has been deleted
-    if(!memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID))) {
-        DMSG("Deleted variable!");
-        newVariableSize = 0;
+    if(!memcmp(&(Node->VendorGuid), &GUID_NULL, sizeof(GUID))) {
+        DMSG("Cleaning up deleted variable at 0x%lx", (UINT_PTR)Node);
+        newNodeSize = 0;
         wasDeleted = TRUE;
     } else {
         // If possible, merge adjacent blocks which are fragmented.
-        MergeAdjacentBlocks(pVar);
+        MergeAdjacentNodes(Node);
 
         // If this variable still has multiple blocks it may be necessary to update
         // the offsets as memory is reclaimed.
-        DMSG("Var at 0x%lx has offset 0x%lx", (UINT_PTR)pVar, pVar->NextOffset);
-        if (pVar->NextOffset) {
-            TrackOffset(pVar);
+        if (Node->NextOffset) {
+            TrackOffset(Node);
         }
 
-        DMSG("Offset:0x%lx, Size:0x%x", pVar->DataOffset, pVar->DataSize);
-        newVariableSize = pVar->DataOffset + pVar->DataSize;
+        newNodeSize = Node->DataOffset + Node->DataSize;
     }
 
     wastedSpace = pVar->AllocSize - newVariableSize;
@@ -497,45 +504,45 @@ ReclaimVariable(
     // We need to remain alligned, don't reclaim gaps smaller
     // than our alignment.
     if (wastedSpace < NV_AUTHVAR_ALIGNMENT) {
-        DMSG("Can't reclaim less than 0x%x", NV_AUTHVAR_ALIGNMENT);
+        FMSG("Can't reclaim less than 0x%x", NV_AUTHVAR_ALIGNMENT);
         //
         // If we aren't moving the next variable, we don't need to track
         // offsets to it anymore.
         //
-        UpdateOffsets((UINT_PTR)pVar + pVar->AllocSize - (UINT_PTR)s_NV, 0);
+        UpdateOffsets((UINT_PTR)Node + Node->AllocSize - (UINT_PTR)s_NV, 0);
         return 0;
     }
 
-    newAlloc = ROUNDUP(newVariableSize, NV_AUTHVAR_ALIGNMENT);
-    shrinkAmmount = pVar->AllocSize - newAlloc;
+    newAlloc = ROUNDUP(newNodeSize, NV_AUTHVAR_ALIGNMENT);
+    shrinkAmmount = Node->AllocSize - newAlloc;
 
-    DMSG("We now need 0x%x, 0x%x less than before", newAlloc, shrinkAmmount);
+    FMSG("We actually need 0x%x, 0x%x less than before", newAlloc, shrinkAmmount);
 
     // Search ahead for the first non-deleted variable, or the end of memory
     // We may as well colapse multiple variables in one go.
     // If our memory becomes corrupt the next variable may have alloc size 0.
-    // This will be caught on the next iteration of ReclaimVariable().
-    nextVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->AllocSize);
-    DMSG("Next variable is at 0x%lx", (UINT_PTR)nextVar);
+    // This will be caught on the next iteration of ReclaimNode().
+    nextNode = (PUEFI_VARIABLE)(Node->BaseAddress + Node->AllocSize);
     deleteAmmount = 0;
-    while (((UINT_PTR)nextVar - (UINT_PTR)s_NV < s_nextFree) &&
-            !memcmp(&(nextVar->VendorGuid), &GUID_NULL, sizeof(GUID)) &&
-            nextVar->AllocSize > 0) {
+    while (((UINT_PTR)nextNode - (UINT_PTR)s_NV < s_nextFree) &&
+            !memcmp(&(nextNode->VendorGuid), &GUID_NULL, sizeof(GUID)) &&
+            nextNode->AllocSize > 0) {
 
-        DMSG("Found deleted variable of size 0x%x", nextVar->AllocSize);
-        deleteAmmount += nextVar->AllocSize;
-        // nextVar's BaseAddress has not been updated yet, use actual address.
-        DMSG("Now checking for another deleted variable at 0x%lx",(UINT_PTR)nextVar);
-        nextVar = (PUEFI_VARIABLE)((UINT_PTR)nextVar + nextVar->AllocSize);
+        FMSG("Found deleted variable of size 0x%x at 0x%lx", nextNode->AllocSize, 
+            (UINT_PTR)nextNode);
+        deleteAmmount += nextNode->AllocSize;
+        // nextNode's BaseAddress has not been updated yet, use actual address.
+        nextNode = (PUEFI_VARIABLE)((UINT_PTR)nextNode + nextNode->AllocSize);
     }
 
-    pVar->AllocSize -= shrinkAmmount;
+    FMSG("Total wasted space: 0x%x", shrinkAmmount + deleteAmmount);
+    Node->AllocSize -= shrinkAmmount;
 
     // No need to move data at the end of storage, just colapse the end pointer
-    if((UINT_PTR)nextVar - (UINT_PTR)s_NV >= s_nextFree) {
-        DMSG("Last variable, shrinking s_nextFree by 0x%x", (shrinkAmmount + deleteAmmount));
+    if((UINT_PTR)nextNode - (UINT_PTR)s_NV >= s_nextFree) {
+        FMSG("Last variable, shrinking s_nextFree");
         s_nextFree -= (shrinkAmmount + deleteAmmount);
-        DMSG("s_nextFree is now 0x%lx (0x%lx)", s_nextFree, (UINT_PTR)&s_NV[s_nextFree]);
+        FMSG("s_nextFree is now 0x%lx (0x%lx)", s_nextFree, (UINT_PTR)&s_NV[s_nextFree]);
         // It is important to clear data from the end of the list. This allows us to detect
         // corruption (ie s_nextFree points past the end of actual data due to a power failure
         // during write back).
@@ -544,44 +551,41 @@ ReclaimVariable(
         PLIST_ENTRY head = &MemoryReclamationList;
         PLIST_ENTRY cur = head->Flink;
         if(head != cur) {
-            DMSG("List broken?");
-            DMSG("Was looking for 0x%lx",((PMEMORY_RECLAMATION_NODE)head->Flink)->NV_Offset);
+            EMSG("Reclemation list is broken, was expecting to update pointers to 0x%lx",
+                ((PMEMORY_RECLAMATION_NODE)head->Flink)->NV_Offset);
             TEE_Panic(TEE_ERROR_BAD_STATE);
         }
     } else {
         // Move the next variable into the extra space, then
         // expand that variable so it is allocated the entire gap.
-        // This space will be reclaimed in the next call to ReclaimMemory().
-        DMSG("Size of nextVar: 0x%x, distance to move: shrink amount:0x%x + delete ammount:0x%x", nextVar->AllocSize, shrinkAmmount, deleteAmmount);
-
+        // This space will be reclaimed in the next call to ReclaimNode().
         // If s_nextFree is not consistent with actual data, we will run into an all zero block.
-        // This is a sign of data corruption and is considered an error.
-        if (nextVar->AllocSize == 0) {
+        // This is a sign of data corruption and is considered an irrecoverable error.
+        if (nextNode->AllocSize == 0) {
             EMSG("Detected corruption in authenticated variable store");
             TEE_Panic(TEE_ERROR_BAD_STATE);
         }
 
-        nextVarOldAllocSize = nextVar->AllocSize;
+        nextNodeOldAllocSize = nextNode->AllocSize;
 
-        nextVar->AllocSize += shrinkAmmount + deleteAmmount;
-        DMSG("Next var now has alloc size of 0x%x", nextVar->AllocSize);
+        nextNode->AllocSize += shrinkAmmount + deleteAmmount;
+        FMSG("Next node now has alloc size of 0x%x", nextNode->AllocSize);
 
         // Keeping the internal structure up to date is required to allow
         // printing of the current memory state.
-        if(nextVar->NextOffset) {
-            nextVar->NextOffset += shrinkAmmount + deleteAmmount;
+        if(nextNode->NextOffset) {
+            nextNode->NextOffset += shrinkAmmount + deleteAmmount;
         }
 
-        DMSG("Moving offset 0x%lx to 0x%lx (size=0x%x)", (UINT_PTR)nextVar - (UINT_PTR)s_NV, pVar->BaseAddress + pVar->AllocSize - (UINT_PTR)s_NV, nextVar->AllocSize);
-        DMSG("(0x%lx to 0x%lx)", (UINT_PTR)nextVar, pVar->BaseAddress + pVar->AllocSize);
-        _plat__NvMemoryMove((UINT_PTR)nextVar - (UINT_PTR)s_NV,
-                            pVar->BaseAddress + pVar->AllocSize - (UINT_PTR)s_NV,
-                            nextVarOldAllocSize);
+        FMSG("Moving node at 0x%lx to 0x%lx (size=0x%x)", (UINT_PTR)nextNode,
+            Node->BaseAddress + Node->AllocSize, nextNodeOldAllocSize);
+        _plat__NvMemoryMove((UINT_PTR)nextNode - (UINT_PTR)s_NV,
+            Node->BaseAddress + Node->AllocSize - (UINT_PTR)s_NV,
+            nextNodeOldAllocSize);
 
-
-        // Update any links which pointed to nextVar, which has been moved to colapse
+        // Update any links which pointed to nextNode, which has been moved to colapse
         // a gap
-        UpdateOffsets((UINT_PTR)nextVar - (UINT_PTR)s_NV, shrinkAmmount + deleteAmmount);
+        UpdateOffsets((UINT_PTR)nextNode - (UINT_PTR)s_NV, shrinkAmmount + deleteAmmount);
     }
 
     return wasDeleted;
@@ -614,7 +618,7 @@ AuthVarInitStorage(
 --*/
 {
     NV_AUTHVAR_STATE authVarState;
-    PUEFI_VARIABLE pVar;
+    PUEFI_VARIABLE currentNode;
     PCWSTR name;
     PCGUID guid;
     VARTYPE varType;
@@ -640,14 +644,14 @@ AuthVarInitStorage(
     // Get our Admin state and sanity check ending offset
     _admin__RestoreAuthVarState(&authVarState);
     s_nextFree = authVarState.NvEnd;
-    DMSG("nextFree/NvEnd:0x%lx, s_nvLimit:0x%lx (size:%lx)", (UINT_PTR)authVarState.NvEnd, s_nvLimit, NV_AUTHVAR_SIZE);
+    IMSG("Initializing authenticated variable store");
+    FMSG("nextFree/NvEnd:0x%lx, s_nvLimit:0x%lx (size:%lx)", (UINT_PTR)authVarState.NvEnd, s_nvLimit, NV_AUTHVAR_SIZE);
+    FMSG("s_NV enforced alignment is 0x%x bytes", NV_AUTHVAR_ALIGNMENT);
     if (!(s_nextFree < s_nvLimit))
     {
-        DMSG("FAILED: Inconsistent nextFree/NvEnd.");
-        return 0;
+        EMSG("FAILED: Inconsistent nextFree/NvEnd.");
+        return TEE_ERROR_BAD_STATE;
     }
-
-    DMSG("s_NV enforced alignment is 0x%x bytes", NV_AUTHVAR_ALIGNMENT);
 
     // Init in-memory lists
     for (i = 0; i < VTYPE_END; i++) {
@@ -657,8 +661,6 @@ AuthVarInitStorage(
             continue;
         }
         InitializeListHead(&(VarInfo[i].Head));
-        DMSG("Head %d address is 0x%lx", i, (UINT_PTR)&VarInfo[i].Head);
-        DMSG("Head f:0x%lx, Head b:0x%lx", (UINT_PTR)VarInfo[i].Head.Flink, (UINT_PTR)VarInfo[i].Head.Blink);
     }
     
     // Is our storage empty (i.e., we have no saved vars)?
@@ -668,8 +670,8 @@ AuthVarInitStorage(
         // All we're doing here right now is saving our end-offset, as we
         // get more sophisticated in AuthVars, this is where we would write
         // any other initial AuthVar state.
-		authVarState.NvEnd = s_nextFree;
-		_admin__SaveAuthVarState(&authVarState);
+        authVarState.NvEnd = s_nextFree;
+        _admin__SaveAuthVarState(&authVarState);
         return 1;
     }
 
@@ -679,46 +681,48 @@ AuthVarInitStorage(
     // Init ptr to start of AuthVar storage
     if(ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT) !=
         (UINT_PTR)&s_NV[s_nextFree] ) {
-            DMSG("Alignment error! 0x%lx, 0x%lx",
+            EMSG("Alignment error! 0x%lx, 0x%lx",
                 ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT),
                 (UINT_PTR)&s_NV[s_nextFree] );
             TEE_Panic(TEE_ERROR_BAD_STATE);
     }
-    pVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)s_NV + StartingOffset, NV_AUTHVAR_ALIGNMENT);
+    currentNode = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)s_NV + StartingOffset, NV_AUTHVAR_ALIGNMENT);
 
     do {
         // Init before gettype
-        pVar->BaseAddress = (UINT_PTR)pVar;
-        guid = (PCGUID)&(pVar->VendorGuid);
-        name = (PCWSTR)(pVar->BaseAddress + pVar->NameOffset);
+        currentNode->BaseAddress = (UINT_PTR)currentNode;
+        guid = (PCGUID)&(currentNode->VendorGuid);
+        name = (PCWSTR)(currentNode->BaseAddress + currentNode->NameOffset);
 
         // Check if deleted or appended data entry
-        DMSG("Checking state of next variable at 0x%lx", (UINT_PTR)pVar);
-        if (GetVariableType(name, guid, pVar->Attributes, &varType))
+        FMSG("Checking state of Node at 0x%lx", (UINT_PTR)currentNode);
+        if (GetVariableType(name, guid, currentNode->Attributes, &varType))
         {
             // Only track a node if it is the first entry
-            if(pVar->NameSize > 0)
+            if(currentNode->NameSize > 0)
             {
                 // Add pointer to this var to appropriate in-memory list
-                DMSG("Adding variable to lists");
-                InsertTailList(&VarInfo[varType].Head, &pVar->List);
+                FMSG("Adding variable to lists");
+                InsertTailList(&VarInfo[varType].Head, &currentNode->List);
             }
         }
 
         // Attempt to reclaim unused memory from the current variable,
         // then compute pointer to next var. If the current variable was
-        // deleted then the next variable will be in the same place.
-        if (!ReclaimVariable(pVar)) {
+        // deleted then the next variable will have been moved to the
+        // same location.
+        if (!ReclaimNode(currentNode)) {
             // Variable was not deleted, move to the next variable
-            pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->AllocSize);
+            currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + currentNode->AllocSize);
         }
 
-        DMSG("Do: 0x%lx is less than 0x%lx?",((UINT_PTR)pVar - (UINT_PTR)s_NV),s_nextFree);
         DumpAuthvarMemory();
-    } while (((UINT_PTR)pVar - (UINT_PTR)s_NV) < s_nextFree);
+    } while (((UINT_PTR)currentNode - (UINT_PTR)s_NV) < s_nextFree);
 
     authVarState.NvEnd = s_nextFree;
     _admin__SaveAuthVarState(&authVarState);
+
+    DMSG("Authvar memory initialized");
 
     // No need to commit NV changes to disk now, wait until data has been modified.
     return 1;
@@ -768,7 +772,7 @@ SearchList(
 
         VendorGuid - GUID of the variable
 
-        Var - Pointer to the variable's entry in memory. NULL if not found.
+        Var - Pointer to the variable's first node. NULL if not found.
 
         VarType - Type used to determine variable's info and storage
 
@@ -780,11 +784,12 @@ SearchList(
 {
     UINT32 i;
 
-    DMSG("Search list");
+    FMSG("Searching lists for variable");
 
     // Validate parameters
     if (!(UnicodeName) || !(VendorGuid) || !(Var) || !(VarType))
     {
+        DMSG("Invalid search parameters");
         return;
     }
 
@@ -807,13 +812,6 @@ SearchList(
 
             cur = cur->Flink;
         }
-    }
-
-    // TODO: REMOVE
-    if(*Var) {
-        DMSG("Found match");
-    } else {
-        DMSG("No match");
     }
 
     return;
@@ -856,14 +854,15 @@ CreateVariable(
     PWSTR newStr = NULL;
     PBYTE newData = NULL;
     PEXTENDED_ATTRIBUTES newExt = NULL;
-    UINT32 totalNv = 0, uStrLen = 0, extAttribLen = 0;
+    UINT32 totalNv = 0, strLen = 0, extAttribLen = 0;
     VARTYPE varType;
+    NV_AUTHVAR_STATE authVarState;
     TEE_Result status = TEE_SUCCESS;
 
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
-        DMSG("volatile var");
+        DMSG("Creating volatile variable");
         // Validate length
         if (DataSize == 0)
         {
@@ -871,6 +870,7 @@ CreateVariable(
             //       to create a var with zero DataSize. But I guess we'll cross 
             //       that bridge when we come to it.
             status = TEE_ERROR_BAD_PARAMETERS;
+            EMSG("Create volatile variable error: Bad parameters.");
             goto Cleanup;
         }
 
@@ -878,6 +878,7 @@ CreateVariable(
         if (!(newVar = TEE_Malloc(sizeof(UEFI_VARIABLE), TEE_USER_MEM_HINT_NO_FILL_ZERO)))
         {
             status = TEE_ERROR_OUT_OF_MEMORY;
+            EMSG("Create volatile variable error: Out of memory.");
             goto Cleanup;
         }
 
@@ -886,6 +887,7 @@ CreateVariable(
         {
             TEE_Free(newVar);
             status = TEE_ERROR_OUT_OF_MEMORY;
+            EMSG("Create volatile variable error: Out of memory.");
             goto Cleanup;
         }
 
@@ -895,6 +897,7 @@ CreateVariable(
             TEE_Free(newVar);
             TEE_Free(newStr);
             status = TEE_ERROR_OUT_OF_MEMORY;
+            EMSG("Create volatile variable error: Out of memory.");
             goto Cleanup;
         }
 
@@ -905,8 +908,8 @@ CreateVariable(
         newVar->VendorGuid = *VendorGuid;
         newVar->Attributes.Flags = Attributes.Flags;
 
-        // Pointers to name, etc. are proper memory addresses, 
-        // not offsets inside the memory map
+        // Pointers to name, etc. are proper memory addresses, not
+        // offsets inside the memory map
         newVar->BaseAddress = 0;
 
         // Init/copy variable name
@@ -914,47 +917,36 @@ CreateVariable(
         newVar->NameOffset = (UINT_PTR)newStr;
         memmove(newStr, UnicodeName->Buffer, newVar->NameSize);
 
-        DMSG("Unicode name is:");
-        DHEXDUMP(newStr, newVar->NameSize);
-
         // Init/copy variable data
         newVar->DataSize = DataSize;
         newVar->DataOffset = (UINT_PTR)newData;
         memmove(newData, Data, DataSize);
 
-        DMSG("New  volatlie var is at 0x%lx, data at 0x%lx", (UINT_PTR)newVar, (UINT_PTR)newVar->DataOffset);
-        DMSG("GUID");
-        DHEXDUMP(&newVar->VendorGuid, sizeof(newVar->VendorGuid));
-
         // Note the lack of a check against ExtendedAttributes.
         // We do not implement authenticated volatile variables.
-
-        DMSG("Updating list of type %d", VTYPE_VOLATILE);
-        DMSG("at %lx", (UINT_PTR)&VarInfo[VTYPE_VOLATILE].Head);
-        DMSG("we have f=%lx, t=%lx", (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Flink, (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Blink);
 
         // Add it to the list
         InsertTailList(&(VarInfo[VTYPE_VOLATILE].Head), &newVar->List);
 
-        DMSG("Now we have f=%lx, t=%lx", (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Flink, (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Blink);
-
         // Success
         status = TEE_SUCCESS;
+        FMSG("Created volatile variable");
         goto Cleanup;
     }
     else
     {
         // Nope, create new non-volatile variable.
-        DMSG("non-volatile");
+        DMSG("Creating non-volatile variable");
         // Which list is this variable destined for?
         if (!GetVariableType(UnicodeName->Buffer, VendorGuid, Attributes, &varType))
         {
             status = TEE_ERROR_BAD_PARAMETERS;
+            EMSG("Create non-volatile variable error: Bad parameters.");
             goto Cleanup;
         }
 
         // Get strlen of unicode name
-        uStrLen = UnicodeName->MaximumLength;
+        strLen = UnicodeName->MaximumLength;
 
         // Get size if extended attributes (if provided)
         if (ExtAttributes)
@@ -967,9 +959,9 @@ CreateVariable(
         }
 
         // Total NV requirement to store this var
-        totalNv = sizeof(UEFI_VARIABLE) + uStrLen + DataSize + extAttribLen;
+        totalNv = sizeof(UEFI_VARIABLE) + strLen + DataSize + extAttribLen;
 
-        DMSG("Storing 0x%x bytes (variable + name + data)", totalNv);
+        FMSG("Storing 0x%x bytes (variable + name + data)", totalNv);
 
         DMSG("t: %x snF: %lx nvLim: %lx", totalNv, s_nextFree, s_nvLimit);
         // Is there enough room on this list and in NV?
@@ -978,10 +970,6 @@ CreateVariable(
             status = TEE_ERROR_OUT_OF_MEMORY;
             goto Cleanup;
         }
-
-        // Init pointers to new fields
-        DMSG("s_NV is at 0x%lx", (UINT_PTR)s_NV);
-        DMSG("offset is 0x%lx", s_nextFree);
 
         // Need to create a new structure to hold the data.
         // To satisfy the compiler that allignment is fine use
@@ -995,33 +983,29 @@ CreateVariable(
         }
         newVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT);
 
-        DMSG("newVar: 0x%lx", (UINT_PTR)newVar);
+        // Init pointers to new fields
+
+        FMSG("newVar: 0x%lx", (UINT_PTR)newVar);
         newVar->BaseAddress = (UINT_PTR)newVar;
         newStr = (PWSTR)((UINT_PTR)newVar + sizeof(UEFI_VARIABLE));
-        DMSG("New string is at 0x%lx, with length 0x%x", (UINT_PTR)newStr, uStrLen);
-        newExt = (PEXTENDED_ATTRIBUTES)((UINT_PTR)newStr + uStrLen);
-        DMSG("New ext is at 0x%lx, with length 0x%x", (UINT_PTR)newExt, extAttribLen);
+        FMSG("New string is at 0x%lx, with length 0x%x", (UINT_PTR)newStr, strLen);
+        newExt = (PEXTENDED_ATTRIBUTES)((UINT_PTR)newStr + strLen);
+        FMSG("New ext is at 0x%lx, with length 0x%x", (UINT_PTR)newExt, extAttribLen);
         newData = (PBYTE)((UINT_PTR)newExt + extAttribLen);
-        DMSG("New data is at 0x%lx, with length 0x%x", (UINT_PTR)newData, DataSize);
+        FMSG("New data is at 0x%lx, with length 0x%x", (UINT_PTR)newData, DataSize);
 
-        DMSG("create");
-
-
-        DMSG("vendorguid is 0x%lx",(UINT_PTR)VendorGuid);
         // Init variable structure
         newVar->VendorGuid = *VendorGuid;
         newVar->Attributes.Flags = Attributes.Flags;
-        newVar->NameSize = uStrLen;
+        newVar->NameSize = strLen;
         newVar->NameOffset = (UINT_PTR)newStr - newVar->BaseAddress;
-        DMSG("String offset is 0x%lx", newVar->NameOffset);
-        DMSG("create");
+
         // Copy name and data
-        memmove(newStr, UnicodeName->Buffer, uStrLen);
+        memmove(newStr, UnicodeName->Buffer, strLen);
 
         // Size of var structure before any appended data that may come later
-        // Make sure all structures are aligned.
+        // Make sure all structures are aligned properly.
         newVar->AllocSize = ROUNDUP(totalNv, NV_AUTHVAR_ALIGNMENT);
-        DMSG("create");
         // Extended attributes, if necessary
         if (!extAttribLen)
         {
@@ -1036,7 +1020,7 @@ CreateVariable(
             newVar->ExtAttribOffset = (UINT_PTR)newExt - newVar->BaseAddress;
             memmove(newExt, ExtAttributes, extAttribLen);
         }
-        DMSG("create");
+
         // Data fields
         newVar->DataSize = DataSize;
         newVar->DataOffset = (UINT_PTR)newData - newVar->BaseAddress;
@@ -1044,27 +1028,24 @@ CreateVariable(
 
         // Creating this var we don't yet have appended data
         newVar->NextOffset = 0;
-        DMSG("create");
-        // We've touched NV so, write back.
+
+        // We've touched NV so, mark for write back.
         _plat__MarkDirtyBlocks(newVar->BaseAddress - (UINT_PTR)s_NV, newVar->AllocSize);
 
-        DMSG("Updating s_nextFree from 0x%lx by incrementing %x (%x)", s_nextFree, newVar->AllocSize, totalNv);
-        DMSG("0x%lx -> 0x%lx", (UINT_PTR)s_NV + s_nextFree, (UINT_PTR)s_NV + s_nextFree + newVar->AllocSize);
-        // Update offset to next free byte alligned to 64 bits
-        s_nextFree += newVar->AllocSize;
-        DMSG("create");
-        NV_AUTHVAR_STATE authVarState;
-		authVarState.NvEnd = s_nextFree;
-		_admin__SaveAuthVarState(&authVarState);
+        FMSG("Updating s_nextFree from 0x%lx -> 0x%lx by incrementing %x ",
+            (UINT_PTR)s_NV + s_nextFree, 
+            (UINT_PTR)s_NV + s_nextFree + newVar->AllocSize,
+            newVar->AllocSize);
 
-        DMSG("Updating list of type %d", varType);
-        DMSG("at 0x%lx", (UINT_PTR)&VarInfo[varType].Head);
-        DMSG("we have f=%lx, t=%lx", (UINT_PTR)VarInfo[varType].Head.Flink, (UINT_PTR)VarInfo[varType].Head.Blink);
+        // Update offset to next free byte. Alloc size is already rounded up to maintain
+        // proper alignment.
+        s_nextFree += newVar->AllocSize;
+        authVarState.NvEnd = s_nextFree;
+        _admin__SaveAuthVarState(&authVarState);
 
         // Update the in-memory list
         InsertTailList(&VarInfo[varType].Head, &newVar->List);
-        DMSG("Now we have f=%lx, t=%lx", (UINT_PTR)VarInfo[varType].Head.Flink, (UINT_PTR)VarInfo[varType].Head.Blink);
-        DMSG("Done insert");
+        FMSG("Created non-volatile variable");
     }
 Cleanup:
     DumpAuthvarMemory();
@@ -1102,16 +1083,12 @@ RetrieveVariable(
 {
     PBYTE dstPtr, limit;
     UINT_PTR nextOffset;
-    PUEFI_VARIABLE varIter;
-    UINT32 size, length;
+    PUEFI_VARIABLE currentNode;
+    UINT32 requiredSize, length;
     TEE_Result status = TEE_SUCCESS;
 
-    DMSG("ret");
-    DMSG("Getting value from 0x%lx", (UINT_PTR)Var);
-    DMSG("We can store 0x%x bytes back", ResultBufLen);
+    DMSG("Getting data from variable at 0x%lx", (UINT_PTR)Var);
 
-    size = 0;
-    
     // Detect integer overflow
     if (((UINT32)ResultBuf + ResultBufLen) < (UINT32)ResultBuf)
     {
@@ -1120,63 +1097,61 @@ RetrieveVariable(
     }
 
     //Calculate the total size required
-    varIter = Var;
+    currentNode = Var;
+    requiredSize = 0;
     do {
-        DMSG("Adding size 0x%x", varIter->DataSize);
-        DMSG("Next is 0x%lx", varIter->NextOffset);
-        size += varIter->DataSize;
-        nextOffset = varIter->NextOffset;
-        varIter = (PUEFI_VARIABLE)(varIter->BaseAddress + nextOffset);
+        FMSG("Adding size 0x%x", currentNode->DataSize);
+        requiredSize += currentNode->DataSize;
+        nextOffset = currentNode->NextOffset;
+        currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + nextOffset);
     } while ((nextOffset));
-    DMSG("Total size is 0x%x", size);
+    FMSG("Total required size is 0x%x", requiredSize);
 
-    DMSG("ResultBufLen:0x%x, we want to store 0x%x", ResultBufLen, (size + sizeof(VARIABLE_GET_RESULT)));
+    FMSG("ResultBufLen:0x%x, we want to store 0x%x", ResultBufLen, (requiredSize + sizeof(VARIABLE_GET_RESULT)));
+    ResultBuf->DataSize = requiredSize;
 
-    if (ResultBufLen < (size + sizeof(VARIABLE_GET_RESULT)))
+    if (ResultBufLen < (requiredSize + sizeof(VARIABLE_GET_RESULT)))
     {
-        DMSG("Short buffer");
+        // This is a common error case, a buffer size of 0 is often passed
+        // to check the required size.
+        DMSG("Retreive variable error: result buffer too short.");
         status = TEE_ERROR_SHORT_BUFFER;
-        ResultBuf->DataSize = size;
         goto Cleanup;
     }
 
-DMSG("ret");
     // Copy variable data
     ResultBuf->Attributes = Var->Attributes.Flags;
-    ResultBuf->DataSize = size;
-    ResultBuf->Size = sizeof(VARIABLE_GET_RESULT);
-DMSG("ret");
+    ResultBuf->Size = sizeof(VARIABLE_GET_RESULT) + ResultBuf->DataSize;
+
     // Init for copy
     dstPtr = ResultBuf->Data;
     limit = dstPtr + ResultBufLen;
-DMSG("ret");
+
     // Do the copy (accross appended data entries if necessary)
-    varIter = Var;
+    currentNode = Var;
     do {
         // Calculate length and copy data
-        length = varIter->DataSize;
+        length = currentNode->DataSize;
 
-        DMSG("Data:0x%lx", varIter->DataOffset + varIter->BaseAddress);
-        DMSG("ret");
-        DMSG("Copying 0x%x bytes from 0x%lx to 0x%p", length, (UINT_PTR)(varIter->DataOffset + varIter->BaseAddress), dstPtr);
-        memcpy(dstPtr, (PBYTE)(varIter->DataOffset + varIter->BaseAddress), length);
-        DMSG("ret");
+        FMSG("Copying 0x%x bytes from 0x%lx to 0x%p", length, (UINT_PTR)(currentNode->DataOffset + currentNode->BaseAddress), dstPtr);
+        memcpy(dstPtr, (PBYTE)(currentNode->DataOffset + currentNode->BaseAddress), length);
+
         // Adjust destination pointer
         dstPtr += length;
 
         // Pickup offset to next set of appended data (may be zero)
-        nextOffset = varIter->NextOffset;
+        nextOffset = currentNode->NextOffset;
 
         // Calculate pointer to next set of appended data
-        varIter = (PUEFI_VARIABLE)(varIter->BaseAddress + nextOffset);
+        currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + nextOffset);
 
-        // Loop if we have another entry or we haven't written size bytes yet
+        // Loop if we have another entry and we haven't written size bytes yet
     } while ((nextOffset != 0) && (dstPtr < limit));
 
 Cleanup:
     if (BytesWritten) // or needed..
     {
-        *BytesWritten = size + sizeof(VARIABLE_GET_RESULT);
+        *BytesWritten = requiredSize + sizeof(VARIABLE_GET_RESULT);
         DMSG("Required buffer size is 0x%x bytes", *BytesWritten);
     }
 
@@ -1184,31 +1159,52 @@ Cleanup:
 }
 
 TEE_Result
-DeleteVariable(
-    PUEFI_VARIABLE  Var,
-    VARTYPE         VarType,
-    ATTRIBUTES      Attributes
+DeleteNode(
+    PUEFI_VARIABLE  Tail
 )
+/*++
+
+    Routine Description:
+
+        Marks the tail of a list of nodes as deleted. If called on the
+        first node of a variable the entire varaible will be deleted, 
+        otherwise the variable is truncated.
+
+        It is the caller's responsibility to clean up any links to the
+        deleted nodes when truncating.
+
+        The node can be either volatile or non-volatile.
+
+    Arguments:
+
+        Tail - Pointer to the nodes's location in memory.
+
+    Returns:
+
+        TEE_Result
+
+--*/
 {
     UINT_PTR NextOffset;
-    // First, is this a volatile variable?
-    if (!(Attributes.NonVolatile))
-    {
-        TEE_Free((PBYTE)Var->DataOffset);
-        TEE_Free((PBYTE)Var->NameOffset);
-        TEE_Free((PBYTE)Var);
-    }
-    else {
-        do {
-            DMSG("Deleting variable at 0x%lx", (UINT_PTR)Var);
-            DMSG("Clearing memory at 0x%lx (offset 0x%lx, + 0x%x)", (UINT_PTR)&(Var->VendorGuid), (UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID));
-            _plat__NvMemoryWrite((UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID), &GUID_NULL);
-            _plat__NvMemoryClear((UINT_PTR)&(Var->Attributes.Flags) - (UINT_PTR)s_NV, sizeof(Var->Attributes.Flags));
-            DMSG("Deleted GUID:");
-            DHEXDUMP(&(Var->VendorGuid), sizeof(GUID));
 
-            NextOffset = Var->NextOffset;
-            Var = (PUEFI_VARIABLE)(Var->BaseAddress + NextOffset);
+    DMSG("Deleting variable at 0x%lx", (UINT_PTR)Tail);
+
+    // First, is this a volatile variable?
+    if (!(Tail->Attributes.NonVolatile))
+    {
+        FMSG("Volatile delete");
+        TEE_Free((PBYTE)Tail->DataOffset);
+        TEE_Free((PBYTE)Tail->NameOffset);
+        TEE_Free((PBYTE)Tail);
+    } else {
+        FMSG("Non-volatile delete");
+        do {
+            FMSG("Clearing GUID and attributes from 0x%lx", (UINT_PTR)Tail);
+            _plat__NvMemoryWrite((UINT_PTR)&(Tail->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID), &GUID_NULL);
+            _plat__NvMemoryClear((UINT_PTR)&(Tail->Attributes.Flags) - (UINT_PTR)s_NV, sizeof(Tail->Attributes.Flags));
+
+            NextOffset = Tail->NextOffset;
+            Tail = (PUEFI_VARIABLE)(Tail->BaseAddress + NextOffset);
         } while (NextOffset != 0);
 
     }
@@ -1220,7 +1216,6 @@ DeleteVariable(
 TEE_Result
 AppendVariable(
     PUEFI_VARIABLE          Var,
-    VARTYPE                 VarType,
     ATTRIBUTES              Attributes,
     PEXTENDED_ATTRIBUTES    ExtAttributes,
     PBYTE                   Data,
@@ -1230,13 +1225,11 @@ AppendVariable(
 
     Routine Description:
 
-        Function for appending an existing variable
+        Function for appending to an existing variable.
 
     Arguments:
 
-        Var - Pointer to the variable's entry in memory.
-
-        VarType - Which variable list is Var on?
+        Var - Pointer to a variable's first node.
 
         Attibutes - UEFI variable attributes
 
@@ -1253,12 +1246,12 @@ AppendVariable(
 --*/
 {
     TEE_Result  status = TEE_SUCCESS;
-    DMSG("Append variable");
+    DMSG("Appending to variable at 0x%lx", (UINT_PTR)Var);
 
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
-        DMSG("Volatile append");
+        FMSG("Volatile append");
         PBYTE dstPtr = NULL;
         UINT32 newSize = 0;
 
@@ -1268,6 +1261,7 @@ AppendVariable(
         // Attempt allocation
         if (!(dstPtr = TEE_Malloc(newSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
         {
+            EMSG("Volatile append error: out of memory");
             status = TEE_ERROR_OUT_OF_MEMORY;
             goto Cleanup;
         }
@@ -1290,23 +1284,21 @@ AppendVariable(
     }
     else {
         // Nope, append to existing non-volatile variable.
-        DMSG("Non volatile append");
+        FMSG("Non volatile append");
 
-        PUEFI_VARIABLE varPtr = NULL, newVar = NULL;
+        PUEFI_VARIABLE currentNode = NULL, newNode = NULL;
         PBYTE apndData = NULL;
-        UINT32 apndSize = 0, extAttribLen = 0;
+        UINT32 apndSize = 0;
 
         // Calculate space required for additional data. (Note that 
         // we use a UEFI_VARIABLE as a container for appended data).
         apndSize = sizeof(UEFI_VARIABLE) + DataSize;
-        DMSG("We need to add 0x%x bytes (%x + %x)", apndSize, sizeof(UEFI_VARIABLE), DataSize);
+        FMSG("We need to add 0x%x bytes", apndSize);
 
         // Is there enough room on the list and in NV?
         if ((apndSize + s_nextFree) > s_nvLimit)
         {
-            DMSG("No room");
-            DMSG("s_nextFree is 0x%lx, s_nvLimit is 0x%lx, trying to append 0x%x", s_nextFree, s_nvLimit, apndSize);
-            DMSG("(0x%lx, 0x%lx)",(UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
+            EMSG("Non-volatile append error: out of memory");
             status = TEE_ERROR_OUT_OF_MEMORY;
             goto Cleanup;
         }
@@ -1314,47 +1306,41 @@ AppendVariable(
         // Ensure that we have consistency in args and var info
         if (ExtAttributes && (Var->ExtAttribOffset == 0))
         {
+            EMSG("Non-volatile append error: ExtAttributes mismatch");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
 
-        // Find the end of the chain. varPtr will point to the end of the chain.
-        varPtr = Var;
-        DMSG("varPtr next offset = 0x%lx", varPtr->NextOffset);
-        while (varPtr->NextOffset)
+        // Find the end of the chain. currentNode will point to the end of the chain.
+        currentNode = Var;
+        while (currentNode->NextOffset)
         {
-            DMSG("LastVar next offset = 0x%lx", varPtr->NextOffset);
-            varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + varPtr->NextOffset);
-            DMSG("lastVar @ 0x%lx",(UINT_PTR)varPtr);
+            currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + currentNode->NextOffset);
         }
 
+        FMSG("Last node of variable at 0x%lx", (UINT_PTR)currentNode);
+
         // This is the last variable, we can just extend the end of memory.
-        if((UINT_PTR)(varPtr->BaseAddress + varPtr->AllocSize) == (UINT_PTR)&s_NV[s_nextFree]) {
-            DMSG("End of memory, just expand");
-            apndData = (PBYTE)(varPtr->BaseAddress + varPtr->DataOffset + varPtr->DataSize);
-            DMSG("Adding 0x%x bytes by extending the existing variable", DataSize);
+        if((UINT_PTR)(currentNode->BaseAddress + currentNode->AllocSize) == (UINT_PTR)&s_NV[s_nextFree]) {
+            apndData = (PBYTE)(currentNode->BaseAddress + currentNode->DataOffset + currentNode->DataSize);
+            FMSG("Last node in NV, adding 0x%x bytes by extending the existing variable", DataSize);
             _plat__NvMemoryWrite((UINT_PTR)apndData - (UINT_PTR)s_NV, DataSize, Data);
 
             // Update sizes (we know we're adding to the end of NV data)
-            DMSG("varPtr had 0x%x bytes of data", varPtr->DataSize);
-            varPtr->DataSize += DataSize;
-            varPtr->AllocSize = ROUNDUP(varPtr->DataOffset + varPtr->DataSize, NV_AUTHVAR_ALIGNMENT);
-            _plat__MarkDirtyBlocks(varPtr->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
-            DMSG("varPtr now has 0x%x bytes of data", varPtr->DataSize);
+            currentNode->DataSize += DataSize;
+            currentNode->AllocSize = ROUNDUP(currentNode->DataOffset + currentNode->DataSize, NV_AUTHVAR_ALIGNMENT);
+            _plat__MarkDirtyBlocks(currentNode->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
 
             // No need to create additional nodes later.
             DataSize = 0;
 
-            s_nextFree = (varPtr->BaseAddress + varPtr->AllocSize) - (UINT_PTR)s_NV;
+            s_nextFree = (currentNode->BaseAddress + currentNode->AllocSize) - (UINT_PTR)s_NV;
             NV_AUTHVAR_STATE authVarState;
             authVarState.NvEnd = s_nextFree;
             _admin__SaveAuthVarState(&authVarState);
-        }  
-
-        // There may be data left which could not be included in the existing elements
-        if (DataSize > 0) {
-
-            DMSG("Add new variable to hold extra data");
+        } else {
+            // Need to add a new node to the variable.
+            FMSG("Adding a new node to hold appended data");
         
             // To satisfy the compiler that allignment is fine use ROUNDUP.
             if(ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT) !=
@@ -1364,23 +1350,21 @@ AppendVariable(
                         (UINT_PTR)&s_NV[s_nextFree] );
                     TEE_Panic(TEE_ERROR_BAD_STATE);
             }
-            newVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT);
-            DMSG("New variable at 0x%lx", (UINT_PTR)newVar);
+            newNode = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&s_NV[s_nextFree], NV_AUTHVAR_ALIGNMENT);
+            FMSG("New variable at 0x%lx", (UINT_PTR)newNode);
 
-            newVar->BaseAddress = (UINT_PTR)newVar;
-            newVar->List.Flink = newVar->List.Blink = 0;
-            newVar->VendorGuid = Var->VendorGuid;
-            newVar->Attributes.Flags = Attributes.Flags;
-            newVar->NameSize = 0;
-            newVar->NameOffset = 0;
-            newVar->AllocSize = ROUNDUP(sizeof(UEFI_VARIABLE) + DataSize, NV_AUTHVAR_ALIGNMENT);
-            newVar->ExtAttribSize = 0;
-            newVar->ExtAttribOffset = 0;
-            newVar->DataSize = DataSize;
-            apndData = (PBYTE)(newVar->BaseAddress + sizeof(UEFI_VARIABLE));
-
-            newVar->DataOffset = (UINT_PTR)apndData - newVar->BaseAddress;
-            DMSG("Updating data pointer in newVar to point to 0x%lx (0x%lx)", newVar->DataOffset + newVar->BaseAddress, newVar->DataOffset);
+            newNode->BaseAddress = (UINT_PTR)newNode;
+            newNode->List.Flink = newNode->List.Blink = 0;
+            newNode->VendorGuid = Var->VendorGuid;
+            newNode->Attributes.Flags = Attributes.Flags;
+            newNode->NameSize = 0;
+            newNode->NameOffset = 0;
+            newNode->AllocSize = ROUNDUP(sizeof(UEFI_VARIABLE) + DataSize, NV_AUTHVAR_ALIGNMENT);
+            newNode->ExtAttribSize = 0;
+            newNode->ExtAttribOffset = 0;
+            newNode->DataSize = DataSize;
+            apndData = (PBYTE)(newNode->BaseAddress + sizeof(UEFI_VARIABLE));
+            newNode->DataOffset = (UINT_PTR)apndData - newNode->BaseAddress;
 
             // Copy data
             memmove(apndData, Data, DataSize);
@@ -1389,12 +1373,14 @@ AppendVariable(
             if (ExtAttributes)
             {
                 PEXTENDED_ATTRIBUTES extAttrib;
+                UINT32 extAttribLen = 0;
 
                 // Sanity check sizes
                 extAttrib = (PEXTENDED_ATTRIBUTES)(Var->BaseAddress + Var->ExtAttribOffset);
                 extAttribLen = sizeof(EXTENDED_ATTRIBUTES) + ExtAttributes->PublicKey.Size;
                 if (extAttribLen != (sizeof(EXTENDED_ATTRIBUTES) + extAttrib->PublicKey.Size))
                 {
+                    EMSG("Non-volatile append error: ExtAttributes mismatch");
                     status = TEE_ERROR_BAD_PARAMETERS;
                     goto Cleanup;
                 }
@@ -1404,13 +1390,13 @@ AppendVariable(
             }
 
             // Finally, link appended variable data
-            varPtr->NextOffset = newVar->BaseAddress - varPtr->BaseAddress;
+            currentNode->NextOffset = newNode->BaseAddress - currentNode->BaseAddress;
 
             // Update the NV memory
-            _plat__MarkDirtyBlocks(varPtr->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
-            _plat__MarkDirtyBlocks(newVar->BaseAddress - (UINT_PTR)s_NV, newVar->AllocSize);
+            _plat__MarkDirtyBlocks(currentNode->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
+            _plat__MarkDirtyBlocks(newNode->BaseAddress - (UINT_PTR)s_NV, newNode->AllocSize);
 
-            s_nextFree += newVar->AllocSize;
+            s_nextFree += newNode->AllocSize;
             NV_AUTHVAR_STATE authVarState;
             authVarState.NvEnd = s_nextFree;
             _admin__SaveAuthVarState(&authVarState);
@@ -1424,7 +1410,6 @@ Cleanup:
 TEE_Result
 ReplaceVariable(
     PUEFI_VARIABLE          Var,
-    VARTYPE                 VarType,
     ATTRIBUTES              Attributes,
     PEXTENDED_ATTRIBUTES    ExtAttributes,
     PBYTE                   Data,
@@ -1434,11 +1419,11 @@ ReplaceVariable(
 
     Routine Description:
 
-        Function for replacing value of an existing volatile variable
+        Function for replacing value of an existing variable
 
     Arguments:
 
-        Var - Pointer to the variable's entry in memory.
+        Var - Pointer to a variable's first node.
 
         Attibutes - UEFI variable attributes
 
@@ -1455,14 +1440,13 @@ ReplaceVariable(
 --*/
 {
     PBYTE srcPtr, limit;
-    PUEFI_VARIABLE dstPtr, varPtr;
+    PUEFI_VARIABLE dstPtr, currentNode, lastUsedNode;
     UINT_PTR nextOffset;
     UINT32 length, canFit, remaining;
     TEE_Result  status = TEE_SUCCESS;
 
-    DMSG("REplacing variable at 0x%lx", (UINT_PTR)Var);
+    DMSG("Replacing variable at 0x%lx", (UINT_PTR)Var);
 
-    //
     EXTENDED_ATTRIBUTES NullAttributes = {0};
     if (!memcmp(ExtAttributes, &NullAttributes, sizeof(EXTENDED_ATTRIBUTES))) {
         ExtAttributes = NULL;
@@ -1471,7 +1455,7 @@ ReplaceVariable(
     // We don't implement authenticated volatile variables
     if (!(Attributes.NonVolatile) && ExtAttributes)
     {
-        DMSG("replace error");
+        EMSG("Replace variable error: Volatile authenticated variables not supported");
         status = TEE_ERROR_NOT_IMPLEMENTED;
         goto Cleanup;
     }
@@ -1480,7 +1464,7 @@ ReplaceVariable(
     if (((Attributes.TimeBasedAuth) && !ExtAttributes) ||
         (!(Attributes.TimeBasedAuth) && ExtAttributes))
     {
-        DMSG("replace error");
+        EMSG("Replace variable error: Bad authentication parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1488,10 +1472,11 @@ ReplaceVariable(
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
+        FMSG("Replacing volatile variable");
         // Yes. Make sure variable doesn't indicate APPEND_WRITE.
         if ((Attributes.AppendWrite))
         {
-            DMSG("replace error");
+            EMSG("Replace variable error: Bad parameters");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
@@ -1508,6 +1493,7 @@ ReplaceVariable(
         // No, attempt allocation
         if (!(dstPtr = TEE_Malloc(DataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
         {
+            EMSG("Replace volatile variable error: Out of memory");
             status = TEE_ERROR_OUT_OF_MEMORY;
             goto Cleanup;
         }
@@ -1526,67 +1512,65 @@ ReplaceVariable(
     }
 
     // No, replace existing non-volatile variable.
+    FMSG("Replacing volatile variable");
 
     // Calculate the amount of NV we already have for this variable
-    varPtr = Var;
+    currentNode = Var;
     canFit = 0;
     do {
-        canFit += varPtr->AllocSize - varPtr->DataOffset;
-        nextOffset = varPtr->NextOffset;
-        varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + nextOffset);
+        canFit += currentNode->AllocSize - currentNode->DataOffset;
+        nextOffset = currentNode->NextOffset;
+        currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + nextOffset);
     } while ((nextOffset));
-    FMSG("Total current size is 0x%x", canFit);
 
     if (DataSize > canFit) {
         // We are increasing our allocation, make sure a new variable will fit.
         length = DataSize - canFit;
-        FMSG("Need 0x%x free bytes", length + sizeof(UEFI_VARIABLE));
         if ((sizeof(UEFI_VARIABLE) + length + s_nextFree) > s_nvLimit)
         {
+            EMSG("Replace non-volatile variable error: Out of NV memory");
             status = TEE_ERROR_OUT_OF_MEMORY;
             goto Cleanup;
         }
     }
 
-    DMSG("non-volatile replace");
-
     // Init for copy
     srcPtr = Data;
     remaining = DataSize;
     limit = Data + DataSize;
-    varPtr = Var;
+    currentNode = Var;
+    // lastUsedNode will track the last node which holds data    
+    lastUsedNode = Var;
 
-    DMSG("Want to replace with 0x%x bytes of new data", remaining);
+    FMSG("Want to replace with 0x%x bytes of new data", remaining);
 
     // Do the copy (across appended data entries if necessary).
     // Shrinking a variable can cause fragmentation, reclaiming the
     // lost memory is handled on init.
     do {
         // Determine available space to copy to in the current variable
-        canFit = varPtr->AllocSize - varPtr->DataOffset;
-        DMSG("WE can fit 0x%x bytes into the current variable at 0x%lx", canFit, (UINT_PTR)varPtr);
+        canFit = currentNode->AllocSize - currentNode->DataOffset;
+        FMSG("WE can fit 0x%x bytes of 0x%x into the current variable at 0x%lx",
+             canFit, remaining, (UINT_PTR)currentNode);
         // Length is either the size of this entry or our remaining byte count
         length = MIN(canFit, remaining);
 
-        DMSG("Moving 0x%x bytes into the existing variable", length);
+        memmove((PBYTE)(currentNode->BaseAddress + currentNode->DataOffset), srcPtr, length);
+        currentNode->DataSize = length;
 
-        memmove((PBYTE)(varPtr->BaseAddress + varPtr->DataOffset), srcPtr, length);
-        DMSG("Stomping over 0x%lx ot 0x%lx", (varPtr->BaseAddress + varPtr->DataOffset),(varPtr->BaseAddress + varPtr->DataOffset) + length - 1);
-        varPtr->DataSize = length;
-
-        _plat__MarkDirtyBlocks(varPtr->BaseAddress - (UINT_PTR)s_NV, varPtr->AllocSize);
+        _plat__MarkDirtyBlocks(currentNode->BaseAddress - (UINT_PTR)s_NV, currentNode->AllocSize);
 
         // Adjust remaining and source pointer
         remaining -= length;
         srcPtr += length;
 
         // Pickup offset to next set of appended data (may be zero)
-        nextOffset = varPtr->NextOffset;
+        nextOffset = currentNode->NextOffset;
 
         if(nextOffset) {
-            DMSG("Continuing on to next element");
             // Calculate pointer to next set of appended data
-            varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + nextOffset);
+            lastUsedNode = currentNode;
+            currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + nextOffset);
         }
 
         // Loop if we have another entry and we haven't written DataSize bytes yet
@@ -1595,7 +1579,6 @@ ReplaceVariable(
     // This should never happen, but if we overran our buffer then panic
     if (srcPtr > limit)
     {
-        // TODO: SHOULD TEE_PANIC HERE, THIS SHOULD NEVER HAPPEN
         status = TEE_ERROR_OVERFLOW;
         TEE_Panic(TEE_ERROR_OVERFLOW);
         goto Cleanup;
@@ -1604,27 +1587,27 @@ ReplaceVariable(
     // Did we run out of space in this variable? If so, append the remaining bytes.
     if (srcPtr < limit)
     {
-        // TODO: TEE_PANIC HERE IF nextOffset != 0 (TEE_ERROR_BAD_STATE)
-        DMSG("Append a new variable to the end of the list");
+        FMSG("Appending a new variable to hold 0x%x bytes", remaining);
+        if (nextOffset != 0) {
+            TEE_Panic(TEE_ERROR_BAD_STATE);
+        }
 
-        // Append on the rest
-        status = AppendVariable(Var, VarType, Attributes, ExtAttributes, srcPtr, remaining);
+        // Append on the rest with a new node
+        status = AppendVariable(Var, Attributes, ExtAttributes, srcPtr, remaining);
     }
     else
     {
-        DMSG("We managed to fit it all");
         // Data copy was successful, but is some cleanup necessary?
         if (nextOffset)
         {
-
             // If our next offset != 0 on what should be the last data entry, it's
             // because we 'replaced' the variable data with a smaller data size.
             // Clean up the excess appended data entries now. If there is a nextOffset
             // Var will already point to the next element in the list.
-            status = DeleteVariable(varPtr, VarType, Attributes);
-            DMSG("Clearing NextOffset from 0x%p", (PBYTE)Var);
-            Var->NextOffset = 0;
-            _plat__MarkDirtyBlocks(Var->BaseAddress - (UINT_PTR)s_NV, Var->AllocSize);
+            FMSG("Clearing NextOffset from 0x%p", (PBYTE)lastUsedNode);
+            status = DeleteNodes(currentNode);
+            lastUsedNode->NextOffset = 0;
+            _plat__MarkDirtyBlocks(lastUsedNode->BaseAddress - (UINT_PTR)s_NV, lastUsedNode->AllocSize);
         }
     }
 
@@ -1667,19 +1650,21 @@ QueryByAttribute(
     UINT64 MaxSize = 0;
     UINT32 VarSize = 0;
 
-    DMSG("Q");
+    DMSG("Querying variables by attributes");
 
     // Note that since we are not provided a (name,guid) for a query, we
     // cannot provide information on secureboot variable storage.
     if (!GetVariableType(NULL, NULL, Attributes, &varType))
     {
+        EMSG("Query by attributes error: Cannot query variables of this type");
+        MaxVarStorage = 0;
+        RemainingVarStorage = 0;
+        MaxVarSize = 0;
         return;
     }
 
-DMSG("Q");
     PLIST_ENTRY head = &VarInfo[varType].Head;
     PLIST_ENTRY cur = head->Flink;
-DMSG("Q");
     while ((cur) && (cur != head))
     {
         pVar = (PUEFI_VARIABLE)cur;
@@ -1688,38 +1673,36 @@ DMSG("Q");
         // MaximumVariableSize includes overhead needed to store the variable,
         // but not the overhead caused by storing the name.
         VarSize = ROUNDUP(pVar->AllocSize - pVar->NameSize, NV_AUTHVAR_ALIGNMENT);
-        DMSG("Initial size of var at 0x%lx is 0x%x", (UINT_PTR)pVar, VarSize);
 
         while(pVar->NextOffset) {
             pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->NextOffset);
             VarSize += pVar->AllocSize;
-            DMSG("\tAdding 0x%x bytes from linked node", pVar->AllocSize);
         }
-        
-        DMSG("Var has total size 0x%x", VarSize);
+
         MaxSize = MAX(MaxSize, VarSize);
 
         cur = cur->Flink;
     }
 
-    DMSG("Max size is 0x%x", (UINT32)MaxSize);
-
     // Fill in output values
     if (MaxVarStorage)
     {
         // This implementation does not need to differentiate between types.
-        // We can store any type of variable. Spec 
+        // We can store any type of variable.
         *MaxVarStorage = NV_AUTHVAR_SIZE;
+        FMSG("Max storage is 0x%x", (UINT32)MaxVarStorage);
     }
 
     if (RemainingVarStorage)
     {
         *RemainingVarStorage = s_nvLimit - s_nextFree - sizeof(UEFI_VARIABLE);
+        FMSG("Remaining storage is 0x%x", (UINT32)RemainingVarStorage);
     }
 
     if (MaxVarSize)
     {
         *MaxVarSize = MaxSize;
+        FMSG("Max variable size is 0x%x", (UINT32)MaxSize);
     }
 
     return;
@@ -1740,11 +1723,15 @@ CompareEntries(
 
     Routine Description:
 
-        Routine for comparing two NAME_KEYs
+        Routine for checking if a variable matches a name and GUID.
 
     Arguments:
 
-        Entry0, Entry1 - The two structures to compare
+        Name - The name to match
+
+        Guid - The GUID to match
+
+        Var - The first node of the variable to compare against
 
     Returns:
 
@@ -1754,34 +1741,22 @@ CompareEntries(
 {    
     BOOLEAN retVal = FALSE;
 
-    //DMSG("Unicode name:");
-    //DHEXDUMP(Name->Buffer, Name->MaximumLength);
-    //DMSG("Target name at 0x%lx + 0x%lx = 0x%lx:",Var->BaseAddress , Var->NameOffset, Var->BaseAddress + Var->NameOffset);
-    //DHEXDUMP(Var->BaseAddress + Var->NameOffset, Var->NameSize);
-
-    //DMSG("Comparing GUIDs at 0x%lx and 0x%lx", (uint32_t)Guid, (uint32_t)&Var->VendorGuid);
-    //DHEXDUMP(&Var->VendorGuid, sizeof(Var->VendorGuid));
     // First, matching GUIDS?
     if (memcmp(Guid, &Var->VendorGuid, sizeof(GUID)) == 0)
     {
-        //DMSG("Same");
-        //DMSG("Mlengh = %d, SearchLengh = %d, checklength = %d", Name->MaximumLength, wcslen(Name->Buffer), wcslen(Var->BaseAddress + Var->NameOffset));
         // Ok, name strings of the same length?
-        if (wcslen(Name->Buffer) == wcslen((wchar_t*)(Var->BaseAddress + Var->NameOffset)))
+        // When NameSize was set any  extra trailing characters beyond the null
+        // terminator were ignored, so it should correctly match Name->Length.
+        if (Name->Length == (Var->NameSize - sizeof(WCHAR)))
         {
-            //DMSG("Comparing Names at 0x%lx and 0x%lx", (uint32_t)Name->Buffer, Var->BaseAddress + (uint32_t)Var->NameOffset);
             // Yes, do they match? (case sensitive!)
-            if (wcscmp(Name->Buffer, (wchar_t*)(Var->BaseAddress + Var->NameOffset)) == 0)
+            if (wcscmp(Name->Buffer, (PWCHAR)(Var->BaseAddress + Var->NameOffset)) == 0)
             {
                 // Win.
-                //DMSG("Match!");
                 retVal = TRUE;
             }
         }
     }
-    //if(!retVal) {
-        //DMSG("No Match!");
-    //}
     return retVal;
 }
 
@@ -1797,7 +1772,8 @@ GetVariableType(
 
     Routine Description:
 
-        Function for determining Non-volatile variable type
+        Function for determining Non-volatile variable type based on
+            attributes, and optionally name and GUID.
 
     Arguments:
 
@@ -1823,7 +1799,8 @@ GetVariableType(
         return FALSE;
     }
 
-    // VarName and VendorGuid may be NULL
+    // VarName and VendorGuid may be NULL if we are just determining what
+    // type of attributes we have.
     if (VendorGuid != NULL && VarName != NULL && IsSecureBootVar(VarName, VendorGuid))
     {
         *VarType = VTYPE_SECUREBOOT;
@@ -1863,7 +1840,7 @@ IsSecureBootVar(
 
     Arguments:
 
-        VariableName - Name of the variable being searched
+        VarName - Name of the variable being searched
 
         VendorGuid - GUID of the variable
 
