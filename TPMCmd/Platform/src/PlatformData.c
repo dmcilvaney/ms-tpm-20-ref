@@ -73,7 +73,7 @@ uint32_t             lastEntropy;
 
 
 // For NVMem.c
-unsigned char        s_NV[NV_MEMORY_SIZE];
+__align(NV_AUTHVAR_ALIGNMENT) unsigned char s_NV[NV_MEMORY_SIZE];
 BOOL                 s_NvIsAvailable;
 BOOL                 s_NV_unrecoverable;
 BOOL                 s_NV_recoverable;

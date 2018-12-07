@@ -106,7 +106,7 @@ GetVariable(
     }
 
     // Validation of var name size
-    if (((GetParam->NameSize) = 0) || (GetParam->NameSize % sizeof(WCHAR)))
+    if (((GetParam->NameSize) == 0) || (GetParam->NameSize % sizeof(WCHAR)))
     {
         DMSG("Bad name size %d, or not multiple of %d", (uint32_t)GetParam->NameSize, sizeof(WCHAR));
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -129,8 +129,15 @@ GetVariable(
     // Init local name string
     memset(&unicodeName, 0, sizeof(unicodeName));
     unicodeName.Buffer = varName;
-    unicodeName.Length = GetParam->NameSize - sizeof(WCHAR);
-    unicodeName.MaximumLength = GetParam->NameSize;
+    unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
+    unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
+
+    if(unicodeName.MaximumLength > GetParam->NameSize)
+    {
+        DMSG("Unicode string is not null-terminated");
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
+    }
 
     // Find the variable
     SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
@@ -274,8 +281,15 @@ GetNextVariableName(
         // Init for variable search
         varName = (PWSTR)(GetNextParam->Name);
         unicodeName.Buffer = varName;
-        unicodeName.Length = (UINT_PTR)varName - sizeof(WCHAR);
-        unicodeName.MaximumLength = varNameLen;
+        unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
+        unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
+
+        if(unicodeName.MaximumLength > varNameLen)
+        {
+            DMSG("Unicode string is not null-terminated");
+            status = TEE_ERROR_BAD_PARAMETERS;
+            goto Cleanup;
+        }
 
         // Get the next variable in the list
         SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
@@ -358,7 +372,7 @@ SetVariable(
     GUID vendorGuid;
     UNICODE_STRING unicodeName;
     PBYTE data, content;
-    PWSTR varName;
+    PWSTR varName = NULL;
     PUEFI_VARIABLE varPtr;
     TEE_Result status;
     UINT32 varNameSize;
@@ -416,13 +430,32 @@ SetVariable(
     DHEXDUMP(&vendorGuid,sizeof(vendorGuid));
 
     attrib.Flags = SetParam->Attributes.Flags;
-    varName = (PWSTR)(&SetParam->Payload[SetParam->OffsetName]);
+    if ((UINT_PTR)&SetParam->Payload[SetParam->OffsetName] != 
+        ROUNDUP((UINT_PTR)&SetParam->Payload[SetParam->OffsetName], __alignof__(WCHAR)))
+    {
+        EMSG("Received unaligned data");
+        varName = NULL;
+        TEE_Panic(TEE_ERROR_BAD_PARAMETERS);
+    } else {
+        varName = (PWSTR)ROUNDUP((UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
+                                    __alignof__(WCHAR));
+        DMSG("Varname alignment: 0x%lx rounded to 0x%lx",
+                (UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
+                (UINT_PTR)varName);
+    }
     data = &SetParam->Payload[SetParam->OffsetData];
 
     // Don't consider NULL character in Length
     unicodeName.Buffer = varName;
-    unicodeName.Length = varNameSize - sizeof(WCHAR);
-    unicodeName.MaximumLength = varNameSize;
+    unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
+    unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
+
+    if(unicodeName.MaximumLength > varNameSize)
+    {
+        DMSG("Unicode string is not null-terminated");
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
+    }
 
     // Attribute validation
     if ((attrib.Flags & (~EFI_KNOWN_ATTRIBUTES)) != 0)
