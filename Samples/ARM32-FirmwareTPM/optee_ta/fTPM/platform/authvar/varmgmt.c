@@ -211,6 +211,8 @@ DumpAuthvarMemoryImpl(VOID)
     int mainCounter = 0, linkCounter;
     bool linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
 
+    return;
+
     DMSG("\t================================");
     DMSG("\tStart of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
     DMSG("");
@@ -256,16 +258,12 @@ DumpAuthvarMemoryImpl(VOID)
     // If we run too fast, the serial print can't keep up
     // OP-TEE uses very aggresive optimization, need to work
     // to trick it.
-    volatile uint32_t counter;
+    volatile uint32_t counter0, counter1;
     static volatile uint32_t collector = 1;
-    for(counter = 1; counter < 10000000; counter++) {
-        collector = (collector + 1) * mainCounter;
-    }
-    for(counter = 1; counter < 10000000; counter++) {
-        collector = (collector + 1) * mainCounter;
-    }
-    for(counter = 1; counter < 10000000; counter++) {
-        collector = (collector + 1) * mainCounter;
+    for(counter0 = 1; counter0 < 10000; counter0++) {
+        for (counter1 = 1; counter1 < 100000; counter1++) {
+            collector = (collector + 1) * mainCounter;
+        }
     }
     DMSG("%d", collector);
 }
@@ -449,8 +447,7 @@ ReclaimVariable(
 
     DMSG("Reclaiming memory at 0x%lx\n", (UINT_PTR)pVar);
 
-    // If s_nextFree is not consistent with actual data, we will run into an all zero block.
-    // This is a sign of data corruption and is considered an error.
+    // Sanity check size field
     if (pVar->AllocSize == 0) {
         EMSG("Detected corruption in authenticated variable store");
         TEE_Panic(TEE_ERROR_BAD_STATE);
@@ -477,7 +474,7 @@ ReclaimVariable(
     }
 
     wastedSpace = pVar->AllocSize - newVariableSize;
-    DMSG("Total size is 0x%x, Wasted space is 0x%x",newVariableSize, wastedSpace);
+    DMSG("Total size is 0x%x, Wasted space is 0x%x", newVariableSize, wastedSpace);
 
     // We need to remain alligned, don't reclaim gaps smaller
     // than our alignment.
@@ -876,7 +873,6 @@ CreateVariable(
         memmove(newData, Data, DataSize);
 
         DMSG("New  volatlie var is at 0x%lx, data at 0x%lx", (UINT_PTR)newVar, (UINT_PTR)newVar->DataOffset);
-        DHEXDUMP((PBYTE)newVar->DataOffset, DataSize);
         DMSG("GUID");
         DHEXDUMP(&newVar->VendorGuid, sizeof(newVar->VendorGuid));
 
@@ -925,6 +921,7 @@ CreateVariable(
 
         DMSG("Storing 0x%x bytes (variable + name + data)", totalNv);
 
+        DMSG("t: %x snF: %x nvLim: %x", totalNv, s_nextFree, s_nvLimit);
         // Is there enough room on this list and in NV?
         if ((totalNv + s_nextFree) > s_nvLimit)
         {
@@ -1148,10 +1145,11 @@ DeleteVariable(
         TEE_Free((PBYTE)Var->DataOffset);
         TEE_Free((PBYTE)Var->NameOffset);
         TEE_Free((PBYTE)Var);
-    } else {
+    }
+    else {
         do {
             DMSG("Deleting variable at 0x%lx", (UINT_PTR)Var);
-            DMSG("Clearing memory at 0x%lx (offset 0x%lx, + 0x%x)",(UINT_PTR)&(Var->VendorGuid), (UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID));
+            DMSG("Clearing memory at 0x%lx (offset 0x%lx, + 0x%x)", (UINT_PTR)&(Var->VendorGuid), (UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID));
             _plat__NvMemoryWrite((UINT_PTR)&(Var->VendorGuid) - (UINT_PTR)s_NV, sizeof(GUID), &GUID_NULL);
             _plat__NvMemoryClear((UINT_PTR)&(Var->Attributes.Flags) - (UINT_PTR)s_NV, sizeof(Var->Attributes.Flags));
             DMSG("Deleted GUID:");
@@ -1160,6 +1158,9 @@ DeleteVariable(
             NextOffset = Var->NextOffset;
             Var = (PUEFI_VARIABLE)(Var->BaseAddress + NextOffset);
         } while (NextOffset != 0);
+
+        // REVISIT: Technically, we don't need to do this now (we can wait till init)
+        ReclaimVariable(Var);
     }
 
     DumpAuthvarMemory();

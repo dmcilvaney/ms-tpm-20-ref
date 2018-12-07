@@ -319,7 +319,7 @@ GetNextVariableName(
     // TODO: Guard against overflow here
     size = nextVar->NameSize + sizeof(VARIABLE_GET_NEXT_RESULT);
     DMSG("Var at 0x%lx has name size 0x%x", (UINT_PTR)nextVar, size);
-    DHEXDUMP((PBYTE)nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
+    //DHEXDUMP((PBYTE)nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
     if (size > *GetNextResultSize)
     {
         DMSG("Short buffer, need 0x%x bytes", *GetNextResultSize);
@@ -339,8 +339,8 @@ GetNextVariableName(
     *GetNextResultSize = sizeof(VARIABLE_GET_NEXT_RESULT) + nextVar->NameSize;
     GetNextResult->Size = *GetNextResultSize;
 
-    DMSG("Return buffer:");
-    DHEXDUMP(GetNextResult, *GetNextResultSize);
+    //DMSG("Return buffer:");
+    //DHEXDUMP(GetNextResult, *GetNextResultSize);
 
     status = TEE_SUCCESS;
 
@@ -454,8 +454,8 @@ SetVariable(
     // Set() on a variable causes deletion when:
     //   1. Setting a data variable with no access attributes
     //   2. dataSize is zero unless write attribute(s) set
-    isDeleteOperation = (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES) ||
-        ((dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES)));
+    isDeleteOperation = (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES)) ||
+                         ((dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES));
     DMSG("Delete operation? %d, 0x%x (ds: 0x%x, AA:0x%lx && WA:0x%lx)", isDeleteOperation,attrib.Flags, dataSize, EFI_ACCESS_ATTRIBUTES, EFI_WRITE_ATTRIBUTES);
 
     // Yes
@@ -465,11 +465,18 @@ SetVariable(
         DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%lx", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
         // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE unless we are deleting
         // the variable.
-        if ( !isDeleteOperation &&
+        if (!(isDeleteOperation) &&
             (((attrib.Flags) ^ (varPtr->Attributes.Flags)) & ~(EFI_VARIABLE_APPEND_WRITE)))
         {
             EMSG("Set variable bad parameters");
             return TEE_ERROR_BAD_PARAMETERS;
+        }
+
+        if (isDeleteOperation)
+        {
+            // If this is a delete operation then our attrib parameter is wrong
+            // pick it up from the existing variable
+            attrib.Flags = varPtr->Attributes.Flags;
         }
 
         // Once ExitBootServices() is performed..
@@ -484,6 +491,7 @@ SetVariable(
         // If this is an existing authenticated variable, perform security check
         if (varPtr->Attributes.TimeBasedAuth)
         {
+            DMSG("AUTHAUTHAUTH");
             DMSG("Set: TimeBasedAuth");
             status = AuthenticateSetVariable(
                 &unicodeName,
@@ -499,12 +507,12 @@ SetVariable(
 
             if (status != TEE_SUCCESS)
             {
-                DMSG("set");
+                DMSG("set failed: %x", status);
                 goto Cleanup;
             }
 
-            data = content;
-            dataSize = contentSize;
+            //data = content;
+            //dataSize = contentSize;
         }
 
         if (isDeleteOperation)
@@ -570,7 +578,7 @@ SetVariable(
         DMSG("set");
         if (attrib.TimeBasedAuth)
         {
-            DMSG("AUTHAUTHAUTH");
+            DMSG("AUTHAUTHAUTH2");
 
             status = AuthenticateSetVariable(
                 &unicodeName,
@@ -586,12 +594,13 @@ SetVariable(
 
             if (status != TEE_SUCCESS)
             {
-                DMSG("set");
+                DMSG("setauthfailed");
                 goto Cleanup;
             }
+            DMSG("AUTHAUTHAUTH2success");
 
-            data = content;
-            dataSize = contentSize;
+            //data = content;
+            //dataSize = contentSize;
         }
 
         status = CreateVariable(
@@ -601,7 +610,7 @@ SetVariable(
             &extAttrib,
             dataSize,
             data);
-        DMSG("set");
+        DMSG("setsuccess?:%x", status);
         goto Cleanup;
     }
 
@@ -642,7 +651,6 @@ Cleanup:
     }
     _plat__NvCommit();
     DMSG("set done");
-    DHEXDUMP(data, dataSize);
     DMSG("Data:0x%lx, Size:0x%x", (UINT_PTR)data, dataSize);
     return status;
 }

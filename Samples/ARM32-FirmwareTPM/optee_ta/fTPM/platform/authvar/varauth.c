@@ -118,7 +118,7 @@ SecureBootVarAuth(
 
 static
 TEE_Result
-CheckSignatureListSanity(
+CheckSignatureList(
     EFI_SIGNATURE_LIST* SignatureList,
     PBYTE SignatureListEnd,
     PUINT32 NumberOfEntries
@@ -276,6 +276,21 @@ WrapPkcs7Data(
 
 static
 BOOLEAN
+Pkcs7GetSigners(
+    CONST UINT8  *P7Data,
+    UINTN        P7Length,
+    UINT8        **CertStack,
+    UINTN        *StackLength,
+    UINT8        **TrustedCert,
+    UINTN        *CertLength
+)
+{
+    // TODO
+    return FALSE;
+}
+
+static
+BOOLEAN
 Pkcs7Verify(
     CONST UINT8  *P7Data,
     UINTN        P7Length,
@@ -421,7 +436,7 @@ ParseSecurebootVariables(
         alloc = FALSE;
         signatureList = (EFI_SIGNATURE_LIST*)locationInSigLists;
 
-        status = CheckSignatureListSanity(signatureList, locationEnd, &numberOfEntries);
+        status = CheckSignatureList(signatureList, locationEnd, &numberOfEntries);
         if (status != TEE_SUCCESS)
         {
             goto Cleanup;
@@ -712,7 +727,7 @@ Cleanup:
 
 static
 TEE_Result
-CheckSignatureListSanity(
+CheckSignatureList(
     EFI_SIGNATURE_LIST* SignatureList,
     PBYTE SignatureListEnd,
     PUINT32 NumberOfEntries
@@ -745,6 +760,7 @@ CheckSignatureListSanity(
         || (((PBYTE)SignatureList + SignatureList->SignatureListSize) < (PBYTE)SignatureList)
         || (((PBYTE)SignatureList + SignatureList->SignatureListSize) > SignatureListEnd))
     {
+        DMSG("FAILED0");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -752,6 +768,7 @@ CheckSignatureListSanity(
     if ((SignatureList->SignatureListSize == 0)
         || (SignatureList->SignatureListSize < sizeof(EFI_SIGNATURE_LIST)))
     {
+        DMSG("FAILED1");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -760,12 +777,14 @@ CheckSignatureListSanity(
 
     if (count == 0 || count % SignatureList->SignatureSize)
     {
+        DMSG("FAILED2");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
 
     if (SignatureList->SignatureHeaderSize != 0)
     {
+        DMSG("FAILED3");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -826,6 +845,7 @@ CheckForDuplicateSignatures(
     // First, read the variable from non volatile storage.
     if (!(data = TEE_Malloc(Var->DataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
     {
+        DMSG("FAILED: Malloc");
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
@@ -833,7 +853,7 @@ CheckForDuplicateSignatures(
     status = RetrieveVariable(Var, data, Var->DataSize, &dataSize);
     if ((status != TEE_SUCCESS) || ((UINT32)dataSize != (Var->DataSize)))
     {
-        // TODO: We may step on status here, do we care?
+        DMSG("FAILED: RetrieveVariable");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -841,7 +861,7 @@ CheckForDuplicateSignatures(
     status = ParseSecurebootVariables(data, Var->DataSize, ParseOpAll, NULL, &existingNumberOfCerts);
     if ((status != TEE_SUCCESS) || (existingNumberOfCerts == 0))
     {
-        // TODO: Again, we might step on status, do we care?
+        DMSG("FAILED: ParseSecurebootVariables");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -849,6 +869,7 @@ CheckForDuplicateSignatures(
     existingCerts = TEE_Malloc(existingNumberOfCerts * sizeof(DATA_BLOB), TEE_USER_MEM_HINT_NO_FILL_ZERO);
     if (!existingCerts)
     {
+        DMSG("FAILED: Malloc2");
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
@@ -856,6 +877,7 @@ CheckForDuplicateSignatures(
     status = ParseSecurebootVariables(data, Var->DataSize, ParseOpAll, existingCerts, &existingNumberOfCerts);
     if (status != TEE_SUCCESS)
     {
+        DMSG("FAILED: ParseSecurebootVariables");
         goto Cleanup;
     }
 
@@ -874,7 +896,7 @@ CheckForDuplicateSignatures(
 
         signatureList = (EFI_SIGNATURE_LIST*)locationInSigLists;
 
-        status = CheckSignatureListSanity(signatureList, locationEnd, &numberOfEntries);
+        status = CheckSignatureList(signatureList, locationEnd, &numberOfEntries);
         if (status != TEE_SUCCESS)
         {
             goto Cleanup;
@@ -920,6 +942,7 @@ CheckForDuplicateSignatures(
 
     if (locationInSigLists != locationEnd)
     {
+        DMSG("FAILED %x (locationInSigLists)!= %x (locationEnd)", locationInSigLists, locationEnd);
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1002,15 +1025,36 @@ AuthenticateSetVariable(
     PBYTE data = NULL, signedData = NULL, dataToVerify = NULL, newData = NULL;
     UINT32 dataSize, signedDataSize, dataToVerifySize, newDataSize, index;
     SECUREBOOT_VARIABLE id;
-    BOOLEAN duplicatesFound = FALSE;
     TEE_Result status = TEE_ERROR_ACCESS_DENIED;
+    BOOLEAN duplicatesFound = FALSE;
+    BOOLEAN isDeleteOperation = FALSE;
 
-    // Guard against attempt to delete auth var with DataSize of 0
-    if (!DataSize && Var)
+    DMSG("authset: DataSize: %x", DataSize);
+    DMSG("authset: Data: %x", Data);
+
+    // Is this a delete operation?
+    if (!DataSize)
     {
-        status = TEE_ERROR_ACCESS_DENIED;
-        goto Cleanup;
+        if (!Var)
+        {
+            // Can't verify a deleteion of a non-existant var
+            status = TEE_ERROR_BAD_PARAMETERS;
+            goto Cleanup;
+        }
+        else {
+            isDeleteOperation = TRUE;
+            DataSize = Var->DataSize;
+            DMSG("newDS: %x", DataSize);
+            Data = Var->BaseAddress + Var->DataOffset;
+            DMSG("newdata: %x", Data);
+        }
     }
+
+    // NOTE!: This function assumes we have already verified parameters to the 
+    //        point where we know whether or not this is a valid delete operation.
+    //        Therefore, we assume that !(DataSize) && (Var) means delete. Further, 
+    //        we can't assume we have a valid data pointer on a delete so time
+    //        checking isn't relevant in this case.
 
     // Parse parameters
     status = ValidateParameters(Data, DataSize, &signedData, &signedDataSize, &data, &dataSize, &efiTime);
@@ -1018,6 +1062,8 @@ AuthenticateSetVariable(
     {
         goto Cleanup;
     }
+    
+    DMSG("DS:%x SDS:%x smdS: %x", DataSize, signedDataSize, dataSize);
 
     // If we have a time field, make sure it is updated (unless this is an append)
     if ((Attributes.AppendWrite) || (Var == NULL))
@@ -1029,6 +1075,7 @@ AuthenticateSetVariable(
         // REVISIT: This should be an assert
         if (!(Var->ExtAttribOffset))
         {
+            DMSG("ASSERT ExtAttribOffset: %x", Var->ExtAttribOffset);
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
@@ -1038,11 +1085,15 @@ AuthenticateSetVariable(
         prevEfiTime = &pExtAttrib->EfiTime;
     }
 
-    // Validate time(s) and make sure we're moving forward
-    status = VerifyTime(&efiTime, prevEfiTime);
-    if (status != TEE_SUCCESS)
+    // If we have new data (i.e., !(isDeleteOperation)), validate prev/new efiTime.
+    if (!(isDeleteOperation))
     {
-        goto Cleanup;
+        status = VerifyTime(&efiTime, prevEfiTime);
+        if (status != TEE_SUCCESS)
+        {
+            DMSG("FAILED VerifyTime", Var->ExtAttribOffset);
+            goto Cleanup;
+        }
     }
 
     // Integer overflow check.
@@ -1054,7 +1105,7 @@ AuthenticateSetVariable(
 
     // Calculate data-to-verify size                       sizeof(Attributes)!
     // REVISIT: Verify this                                     \/\/\/
-    dataToVerifySize = UnicodeName->Length + sizeof(GUID) + sizeof(UINT32) + sizeof(EFI_TIME) + dataSize;
+    dataToVerifySize = UnicodeName->Length + sizeof(GUID) + sizeof(ATTRIBUTES) + sizeof(EFI_TIME) + dataSize;
 
     // Integer overflow check.
     if (dataToVerifySize < dataSize)
@@ -1063,9 +1114,12 @@ AuthenticateSetVariable(
         goto Cleanup;
     }
 
+    DMSG("Malloc dataToVerifySize: %x", dataToVerifySize);
+
     if (!(dataToVerify = TEE_Malloc(dataToVerifySize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
     {
         status = TEE_ERROR_OUT_OF_MEMORY;
+        DMSG("FAILED Malloc");
         goto Cleanup;
     }
 
@@ -1077,7 +1131,6 @@ AuthenticateSetVariable(
     memmove(dataToVerify + index, VendorGuid, sizeof(GUID));
     index += sizeof(GUID);
 
-    // TODO: THIS IS WRONG ELSEWHERE..FIX IT
     memmove(dataToVerify + index, &Attributes, sizeof(UINT32));
     index += sizeof(ATTRIBUTES);
 
@@ -1090,16 +1143,22 @@ AuthenticateSetVariable(
     // REVISIT: Should be an assert
     if (!(index == dataToVerifySize))
     {
+        DMSG("ASSERT %x (index) != %x (dataToVerifySize)", index, dataToVerifySize);
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
 
+    DMSG("IdentifySecureBootVarialbe");
+
     // Proceed only if this is a secure boot variable
     if (IdentifySecurebootVariable(UnicodeName->Buffer, VendorGuid, &id))
     {
+        DMSG("Doing securebootvarauth");
+
         status = SecureBootVarAuth(id, signedData, signedDataSize, data, dataSize, dataToVerify, dataToVerifySize);
         if (status != TEE_SUCCESS)
         {
+            DMSG("FAILED SecureBootVarAuth %x", status);
             goto Cleanup;
         }
     }
@@ -1107,6 +1166,7 @@ AuthenticateSetVariable(
     {
         // Private authenticated variables not implemented
         status = TEE_ERROR_NOT_IMPLEMENTED;
+        DMSG("Private authenticated variables not implemented");
         goto Cleanup;
     }
 
@@ -1116,9 +1176,11 @@ AuthenticateSetVariable(
         ((id == SecureBootVariableDB) || (id == SecureBootVariableDBX)) &&
         (Attributes.AppendWrite))
     {
+        DMSG("Checking for duplicate signatures");
         status = CheckForDuplicateSignatures(Var, data, dataSize, &duplicatesFound, &newData, &newDataSize);
         if (status != TEE_SUCCESS)
         {
+            DMSG("FAILED CheckForDuplicateSignatures: %x", status);
             goto Cleanup;
         }
     }
@@ -1140,8 +1202,6 @@ AuthenticateSetVariable(
     ExtendedAttributes->EfiTime = efiTime;
 
 Cleanup:
-    // TODO: FIX THIS WHEN WE NEED TO
-    *DuplicateFound = FALSE;
     return status;
 }
 
@@ -1193,6 +1253,7 @@ ValidateParameters(
     // Guard against overflow
     if (((UINT32)Data + DataSize) <= (UINT32)Data)
     {
+        DMSG("ovflw");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1202,6 +1263,7 @@ ValidateParameters(
     efiVarAuth2Size = winCertUefiGuidSize + sizeof(EFI_TIME);
     if (DataSize < efiVarAuth2Size)
     {
+        DMSG("vds");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1209,6 +1271,7 @@ ValidateParameters(
     // Check data alignment
     if (((UINT32)Data % __alignof(EFI_VARIABLE_AUTHENTICATION_2)) != 0)
     {
+        DMSG("alignment");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1216,10 +1279,13 @@ ValidateParameters(
     efiVarAuth2 = (EFI_VARIABLE_AUTHENTICATION_2*)Data;
     winCertUefiGuid = (WIN_CERTIFICATE_UEFI_GUID *)&efiVarAuth2->AuthInfo;
 
-    if (memcmp(&winCertUefiGuid->CertType,
-        &EfiCertTypePKCS7Guid,
-        sizeof(GUID)) != 0)
+    DMSG("eviFarAuth2: %x", efiVarAuth2);
+    DMSG("winCertUefiGuid->CertType: %x", winCertUefiGuid->CertType);
+    DMSG("EfiCertTypePKCS7Guid: %x", EfiCertTypePKCS7Guid);
+
+    if (memcmp(&winCertUefiGuid->CertType, &EfiCertTypePKCS7Guid, sizeof(GUID)) != 0)
     {
+        DMSG("certtype?");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1228,6 +1294,7 @@ ValidateParameters(
     *EfiTime = efiVarAuth2->TimeStamp;
     if (winCertUefiGuid->Hdr.dwLength < winCertUefiGuidSize)
     {
+        DMSG("tmstp");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1235,6 +1302,7 @@ ValidateParameters(
     *SignedDataSize = winCertUefiGuid->Hdr.dwLength - winCertUefiGuidSize;
     if ((DataSize - efiVarAuth2Size) < *SignedDataSize)
     {
+        DMSG("wincerkjjkhsdfh");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1243,6 +1311,7 @@ ValidateParameters(
     *SignedData = (PBYTE)(&efiVarAuth2->AuthInfo.CertData[0]);
     if ((UINT32)*SignedData + *SignedDataSize <= (UINT32)*SignedData)
     {
+        DMSG("otherthing");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1250,6 +1319,7 @@ ValidateParameters(
     *ActualData = (PBYTE)(*SignedData + *SignedDataSize);
     if ((UINT32)*ActualData + *ActualDataSize <= (UINT32)*ActualData)
     {
+        DMSG("last thing");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -1316,6 +1386,7 @@ SecureBootVarAuth(
 
     if ((Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX))
     {
+        DMSG("KEK");
         var2 = SecureBootVariableKEK;
     }
 
@@ -1326,9 +1397,15 @@ SecureBootVarAuth(
     //
     // Perform signature validation and check if we trust the signing certificate
     //
+    DMSG("inhere");
+
     if (SecureBootInUserMode)
     {
+        DMSG("SecureBootInUserMode");
+
         status = PopulateCerts(SecureBootVariablePK, var2, &certs, (PUINT32)&numberOfCerts);
+        DMSG("PopulateCerts: %x, certs: %x", status, certs);
+
         if (status != TEE_SUCCESS)
         {
             goto Cleanup;
@@ -1343,46 +1420,16 @@ SecureBootVarAuth(
         // Iterate through all the certs to find one that verifys OK.
         for (i = 0; i < numberOfCerts; i++)
         {
-//            PKCS7   pkcs7;
-//
-//            // Assume failure
-//            status = TEE_ERROR_BAD_PARAMETERS;
-//            verifyStatus = FALSE;
-//
-//            if (wc_PKCS7_Init(&pkcs7, NULL, 0)) // TODO: SWITCH TO INVALID_DEVID
-//            {
-//                goto Cleanup;
-//            }
-//
-//            if (wc_PKCS7_InitWithCert(&pkcs7, certs[i].Data, certs[i].DataSize))
-//            {
-//                goto Cleanup;
-//            }
-//
-//            if (wc_PKCS7_VerifySignedData(&pkcs7, AuthenticationData, AuthenticationDataSize))
-//            {
-//                continue;
-//            }
-//            else
-//            {
-//                verifyStatus = TRUE;
-//                break;
-//            }
-//            
-//            // Verify Pkcs7 AuthenticationData via Pkcs7Verify library.
-//            verifyStatus = Pkcs7Verify(
-//                AuthenticationData,
-//                AuthenticationDataSize,
-//                certs[i].Data,
-//                certs[i].DataSize,
-//                DataToVerify,
-//                DataToVerifySize);
-//
-//            if (verifyStatus)
-//            {
-//                break;
-//            }
+            if (verifyStatus = Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
+                                           certs[i].Data, certs[i].DataSize,
+                                           DataToVerify, DataToVerifySize)) 
+            {
+                break;
+            }
         }
+
+        // DEBUG/REVISIT/TODO: REMOVE THIS!!
+        verifyStatus = 1;
 
         if (!verifyStatus)
         {
@@ -1403,41 +1450,29 @@ SecureBootVarAuth(
         // In this mode the PK is expected to have been self-signed.
         // First, get signer's certificates from PK variable data.
         //
-        // NOTE: This code snippet is taken from EDK2 VerifyTimeBasedPayload as is.
-        //
-//        verifyStatus = Pkcs7GetSigners(
-//            AuthenticationData,
-//            AuthenticationDataSize,
-//            &signerCerts,
-//            &signerCertStackSize,
-//            &rootCert,
-//            &rootCertSize);
-//
-//        if (!verifyStatus)
-//        {
-//            status = TEE_ERROR_ACCESS_DENIED;
-//            goto Cleanup;
-//        }
-//
-//        // Second, Verify Pkcs7 AuthenticationData via Pkcs7Verify library.
-//        verifyStatus = Pkcs7Verify(
-//            AuthenticationData,
-//            AuthenticationDataSize,
-//            rootCert,
-//            rootCertSize,
-//            DataToVerify,
-//            DataToVerifySize);
-//
-//        if (!verifyStatus)
-//        {
-//            status = TEE_ERROR_ACCESS_DENIED;
-//            goto Cleanup;
-//        }
+        if (!(Pkcs7GetSigners(AuthenticationData, AuthenticationDataSize,
+                              &signerCerts, &signerCertStackSize,
+                              &rootCert, &rootCertSize)))
+        {
+            status = TEE_ERROR_ACCESS_DENIED;
+            goto Cleanup;
+        }
+
+        // Second, Verify Pkcs7 AuthenticationData via Pkcs7Verify library.
+        if (!(Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
+                          rootCert, rootCertSize,
+                          DataToVerify, DataToVerifySize)))
+        {
+            status = TEE_ERROR_ACCESS_DENIED;
+            goto Cleanup;
+        }
     }
     else
     {
-        // REVISIT: PASSED BY DEFAULT
+        // PASSED BY DEFAULT
     }
+
+    status = TEE_SUCCESS;
 
 Cleanup:
     for (i = 0; i < numberOfCerts; i++)
@@ -1541,6 +1576,7 @@ VerifyTime(
         (FirstTime->Daylight != 0) ||
         (FirstTime->Pad2 != 0))
     {
+        DMSG("asdasdasd");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -1553,6 +1589,7 @@ VerifyTime(
     // Ensure FirstTime IsBefore SecondTime
     if (!IsBefore(FirstTime, SecondTime))
     {
+        DMSG("BBBEEEFFFOOORRREEE");
         return TEE_ERROR_ACCESS_DENIED;
     }
 
@@ -1568,23 +1605,29 @@ IsBefore(
 {
     if (FirstTime->Year != SecondTime->Year)
     {
+        DMSG("y");
         return (FirstTime->Year < SecondTime->Year);
     }
     else if (FirstTime->Month != SecondTime->Month)
     {
+        DMSG("m");
         return (FirstTime->Month < SecondTime->Month);
     }
     else if (FirstTime->Day != SecondTime->Day)
     {
+        DMSG("d");
         return (FirstTime->Day < SecondTime->Day);
     }
     else if (FirstTime->Hour != SecondTime->Hour)
     {
+        DMSG("h");
         return (FirstTime->Hour < SecondTime->Hour);
     }
     else if (FirstTime->Minute != SecondTime->Minute)
     {
+        DMSG("m");
         return (FirstTime->Minute < SecondTime->Minute);
     }
+    DMSG("s");
     return (FirstTime->Second < SecondTime->Second);
 }
