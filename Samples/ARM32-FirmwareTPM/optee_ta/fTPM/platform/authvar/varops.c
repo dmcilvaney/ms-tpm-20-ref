@@ -336,7 +336,7 @@ GetNextVariableName(
     //DHEXDUMP((PBYTE)nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
     if (size > *GetNextResultSize)
     {
-        DMSG("Short buffer, need 0x%x bytes", *GetNextResultSize);
+        DMSG("Short buffer, have 0x%x bytes", *GetNextResultSize);
         *GetNextResultSize = size;
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;

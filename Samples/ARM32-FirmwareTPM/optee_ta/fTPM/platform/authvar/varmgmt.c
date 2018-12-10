@@ -211,8 +211,6 @@ DumpAuthvarMemoryImpl(VOID)
     int mainCounter = 0, linkCounter;
     bool linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
 
-    return;
-
     DMSG("\t================================");
     DMSG("\tStart of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
     DMSG("");
@@ -260,7 +258,7 @@ DumpAuthvarMemoryImpl(VOID)
     // to trick it.
     volatile uint32_t counter0, counter1;
     static volatile uint32_t collector = 1;
-    for(counter0 = 1; counter0 < 10000; counter0++) {
+    for(counter0 = 1; counter0 < 100; counter0++) {
         for (counter1 = 1; counter1 < 100000; counter1++) {
             collector = (collector + 1) * mainCounter;
         }
@@ -737,7 +735,7 @@ SearchList(
     *Var = NULL;
 
     // Run the list(s)
-    for (i = 0; i < ARRAY_SIZE(VarInfo); i++)
+    for (i = 0; i < ARRAY_SIZE(VarInfo) && *Var == NULL; i++)
     {
         PLIST_ENTRY head = &VarInfo[i].Head;
         PLIST_ENTRY cur = head->Flink;
@@ -876,13 +874,13 @@ CreateVariable(
         // We do not implement authenticated volatile variables.
 
         DMSG("Updating list of type %d", VTYPE_VOLATILE);
-        DMSG("at %x", (uint32_t)&VarInfo[VTYPE_VOLATILE].Head);
-        DMSG("we have f=%x, t=%x", (uint32_t)VarInfo[VTYPE_VOLATILE].Head.Flink, (uint32_t)VarInfo[VTYPE_VOLATILE].Head.Blink);
+        DMSG("at %lx", (UINT_PTR)&VarInfo[VTYPE_VOLATILE].Head);
+        DMSG("we have f=%lx, t=%lx", (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Flink, (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Blink);
 
         // Add it to the list
         InsertTailList(&(VarInfo[VTYPE_VOLATILE].Head), &newVar->List);
 
-        DMSG("Now we have f=%x, t=%x", (uint32_t)VarInfo[VTYPE_VOLATILE].Head.Flink, (uint32_t)VarInfo[VTYPE_VOLATILE].Head.Blink);
+        DMSG("Now we have f=%lx, t=%lx", (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Flink, (UINT_PTR)VarInfo[VTYPE_VOLATILE].Head.Blink);
 
         // Success
         status = TEE_SUCCESS;
@@ -917,7 +915,7 @@ CreateVariable(
 
         DMSG("Storing 0x%x bytes (variable + name + data)", totalNv);
 
-        DMSG("t: %x snF: %x nvLim: %x", totalNv, s_nextFree, s_nvLimit);
+        DMSG("t: %x snF: %lx nvLim: %lx", totalNv, s_nextFree, s_nvLimit);
         // Is there enough room on this list and in NV?
         if ((totalNv + s_nextFree) > s_nvLimit)
         {
@@ -1004,10 +1002,12 @@ CreateVariable(
 		_admin__SaveAuthVarState(&authVarState);
 
         DMSG("Updating list of type %d", varType);
-        DMSG("at 0x%lx we have value 0x%lx", (UINT_PTR)(&VarInfo[varType].Head), (UINT_PTR)(VarInfo[varType].Head.Flink));
+        DMSG("at 0x%lx", (UINT_PTR)&VarInfo[varType].Head);
+        DMSG("we have f=%lx, t=%lx", (UINT_PTR)VarInfo[varType].Head.Flink, (UINT_PTR)VarInfo[varType].Head.Blink);
 
         // Update the in-memory list
         InsertTailList(&VarInfo[varType].Head, &newVar->List);
+        DMSG("Now we have f=%lx, t=%lx", (UINT_PTR)VarInfo[varType].Head.Flink, (UINT_PTR)VarInfo[varType].Head.Blink);
         DMSG("Done insert");
     }
 Cleanup:
@@ -1155,8 +1155,6 @@ DeleteVariable(
             Var = (PUEFI_VARIABLE)(Var->BaseAddress + NextOffset);
         } while (NextOffset != 0);
 
-        // REVISIT: Technically, we don't need to do this now (we can wait till init)
-        ReclaimVariable(Var);
     }
 
     DumpAuthvarMemory();
