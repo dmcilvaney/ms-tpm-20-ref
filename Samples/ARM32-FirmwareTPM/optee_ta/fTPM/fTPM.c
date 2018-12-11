@@ -532,6 +532,12 @@ static TEE_Result fTPM_AuthVar_Set(
     // Call VarOps
     Status = SetVariable(SetParamSize, SetParam);
 
+    // If there is not enough room in NV, try to reclaim it and re-run the command
+    if(Status == TEE_ERROR_OUT_OF_MEMORY) {
+        CompressAuthvarMemory();
+        Status = SetVariable(SetParamSize, SetParam);
+    }
+
     DMSG("Status: 0x%x", Status);
 
     Params[2].value.a = 0;

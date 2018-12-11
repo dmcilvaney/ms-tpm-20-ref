@@ -352,7 +352,7 @@ _plat__NVInitAuthVar(
         _admin__SaveAuthVarState(&authVarState);
     }
 
-    return(AuthVarInitStorage(NV_AUTHVAR_START));
+    return(AuthVarInitStorage(NV_AUTHVAR_START, FALSE));
 }
 
 

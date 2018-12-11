@@ -124,7 +124,8 @@ ReclaimVariable(
 
 UINT32
 AuthVarInitStorage(
-    UINT_PTR StartingOffset
+    UINT_PTR StartingOffset,
+    BOOLEAN ReInitialize
 );
 
 //
@@ -258,7 +259,7 @@ DumpAuthvarMemoryImpl(VOID)
     // to trick it.
     volatile uint32_t counter0, counter1;
     static volatile uint32_t collector = 1;
-    for(counter0 = 1; counter0 < 100; counter0++) {
+    for(counter0 = 1; counter0 < 500; counter0++) {
         for (counter1 = 1; counter1 < 100000; counter1++) {
             collector = (collector + 1) * mainCounter;
         }
@@ -563,7 +564,8 @@ ReclaimVariable(
 
 UINT32
 AuthVarInitStorage(
-    UINT_PTR StartingOffset
+    UINT_PTR StartingOffset,
+    BOOLEAN ReInitialize
 )
 /*++
 
@@ -574,6 +576,9 @@ AuthVarInitStorage(
     Arguments:
 
         StartingOffset - Offset from 0 of first byte of AuthVar NV storage
+
+        ReInitialize - Are we re-initializing memory at run-time? This can be done
+            to try and clear up deleted variables.
 
     Returns:
 
@@ -590,8 +595,9 @@ AuthVarInitStorage(
     VARTYPE varType;
     VARTYPE i;
 
-    // Sanity check on storage offset
-    if ((StartingOffset != s_nextFree))
+    // Sanity check on storage offset unless we are explicitly re-initializing
+    // the memory.
+    if (!ReInitialize && (StartingOffset != s_nextFree))
     {
         // REVISIT: TEE_Panic()?
         return 0;
@@ -620,6 +626,11 @@ AuthVarInitStorage(
 
     // Init in-memory lists
     for (i = 0; i < VTYPE_END; i++) {
+        if (ReInitialize && i == VTYPE_VOLATILE) {
+            // The lists which track NV need to be rebuilt anyways, but
+            // the volatile variables need to be kept track of.
+            continue;
+        }
         InitializeListHead(&(VarInfo[i].Head));
         DMSG("Head %d address is 0x%lx", i, (UINT_PTR)&VarInfo[i].Head);
         DMSG("Head f:0x%lx, Head b:0x%lx", (UINT_PTR)VarInfo[i].Head.Flink, (UINT_PTR)VarInfo[i].Head.Blink);
@@ -686,6 +697,26 @@ AuthVarInitStorage(
 
     // No need to commit NV changes to disk now, wait until data has been modified.
     return 1;
+}
+
+VOID
+CompressAuthvarMemory(
+    VOID
+)
+/*++
+
+    Routine Description:
+
+        Re-initializes the NV memory in an attempt to find wasted space.
+
+--*/
+{
+    FMSG("Optimizing memory, currently 0x%lx free", s_nvLimit - s_nextFree);
+    if(!AuthVarInitStorage(NV_AUTHVAR_START, TRUE)) {
+        EMSG("Failed to re-initialize NV memory");
+        TEE_Panic(TEE_ERROR_BAD_STATE);
+    }
+    FMSG("Optimizing done, now 0x%lx free", s_nvLimit - s_nextFree);
 }
 
 //
