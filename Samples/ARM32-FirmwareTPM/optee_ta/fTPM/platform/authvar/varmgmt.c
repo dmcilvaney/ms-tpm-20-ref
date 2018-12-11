@@ -1382,6 +1382,7 @@ AppendVariable(
             varPtr->NextOffset = newVar->BaseAddress - varPtr->BaseAddress;
 
             // Update the NV memory
+            _plat__MarkDirtyBlocks(varPtr->BaseAddress - (UINT_PTR)s_NV, sizeof(UEFI_VARIABLE));
             _plat__MarkDirtyBlocks(newVar->BaseAddress - (UINT_PTR)s_NV, newVar->AllocSize);
 
             s_nextFree += newVar->AllocSize;
@@ -1502,12 +1503,20 @@ ReplaceVariable(
     // No, replace existing non-volatile variable.
 
     // Calculate the amount of NV we already have for this variable
-    canFit = Var->AllocSize - Var->DataOffset;
-    DMSG("Alloc: 0x%x, DS: 0x%x, DO: 0x%lx", Var->AllocSize, Var->DataSize, Var->DataOffset);
+    varPtr = Var;
+    canFit = 0;
+    do {
+        canFit += varPtr->AllocSize - varPtr->DataOffset;
+        nextOffset = varPtr->NextOffset;
+        varPtr = (PUEFI_VARIABLE)(varPtr->BaseAddress + nextOffset);
+    } while ((nextOffset));
+    FMSG("Total current size is 0x%x", canFit);
+
     if (DataSize > canFit) {
         // We are increasing our allocation, make sure a new variable will fit.
         length = DataSize - canFit;
-        if ((Var->AllocSize + length + s_nextFree) > s_nvLimit)
+        FMSG("Need 0x%x free bytes", length + sizeof(UEFI_VARIABLE));
+        if ((sizeof(UEFI_VARIABLE) + length + s_nextFree) > s_nvLimit)
         {
             status = TEE_ERROR_OUT_OF_MEMORY;
             goto Cleanup;
