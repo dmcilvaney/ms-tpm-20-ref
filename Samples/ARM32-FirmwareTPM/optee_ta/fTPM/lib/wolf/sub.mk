@@ -4,7 +4,7 @@
 # creating a new fork of each submodule repo. To avoid spurious warnings these warnings are disabled here globally.
 #
 
-WOLF_WARNING_SUPPRESS = -Wno-unused-function
+WOLF_WARNING_SUPPRESS = -Wno-unused-function -Wno-switch-default
 
 #
 # For the purposes of this command the current working directory is the makefile root (/fTPM) folder,
@@ -36,6 +36,7 @@ wolf_symlink/wolfcrypt/src/aes.c \
  wolf_symlink/wolfcrypt/src/ecc.c \
  wolf_symlink/wolfcrypt/src/integer.c \
  wolf_symlink/wolfcrypt/src/memory.c \
+ wolf_symlink/wolfcrypt/src/rsa.c \
  wolf_symlink/wolfcrypt/src/sha.c \
  wolf_symlink/wolfcrypt/src/sha256.c \
  wolf_symlink/wolfcrypt/src/sha512.c \

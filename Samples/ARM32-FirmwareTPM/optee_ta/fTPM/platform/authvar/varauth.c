@@ -34,6 +34,19 @@
 #include <varauth.h>
 #include <varmgmt.h>
 
+// WC related definitions (in here for clarity's sake)
+#define MAX_DECODED_CERTS   10
+#define WC_CHECK(exp)       if ((exp) < 0) { status = FALSE; goto Cleanup; }
+
+BYTE Sha256SignatureBlock[] = { 
+    0x30, 0x31, 0x30, 0x0D, 0x06, 0x09, 0x60, 0x86,
+    0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
+    0x00, 0x04, 0x20, 0xDE, 0x16, 0x52, 0x8A, 0x1E,
+    0x6F, 0x3C, 0x82, 0x29, 0x94, 0x89, 0x37, 0xB3,
+    0x95, 0x84, 0x1F, 0xFA, 0xB8, 0x6A, 0x10, 0x03,
+    0x8A, 0x87, 0x80, 0x46, 0x0F, 0xDB, 0xF6, 0x6D,
+    0x44, 0x1E, 0x9F };
+
  // Track PK set/unset 
 bool SecureBootInUserMode = FALSE;
 
@@ -280,13 +293,173 @@ Pkcs7GetSigners(
     CONST UINT8  *P7Data,
     UINTN        P7Length,
     UINT8        **CertStack,
-    UINTN        *StackLength,
-    UINT8        **TrustedCert,
-    UINTN        *CertLength
+    UINTN        *StackSize,
+    UINT8        **RootCert,
+    UINTN        *RootCertSize
 )
+//
 {
-    // TODO
-    return FALSE;
+    UINTN bufferSize, i;
+    UINTN prevSize;
+    UINTN nextCertSize;
+    UINTN signedDataSize;
+    UINT8 *nextCert;
+    UINT8 *certBuf;
+    UINT8 *signedData;
+    UINT8 *prevBuf;
+    BOOLEAN wrapped, status;
+
+    // Parameter validation
+    if ((P7Data == NULL) || (CertStack == NULL) || (StackSize == NULL) ||
+        (RootCert == NULL) || (RootCertSize == NULL) || (P7Length > INT_MAX)) {
+        status = FALSE;
+        goto Cleanup;
+
+    }
+
+    // Wrap PKCS7 data if not already
+    status = WrapPkcs7Data(P7Data, P7Length, &wrapped, &signedData, &signedDataSize);
+    if (!status) {
+        goto Cleanup;
+    }
+
+    // Retrieve PKCS#7 Data (DER encoding)
+    if (signedDataSize > INT_MAX) {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+//!@#!@#!@#    // De-Serialize PKCS7 data
+//!@#!@#!@#    status = CryptPkcs7FromData(signedData, signedDataSize, &pkcs7);
+//!@#!@#!@#    if (!status) {
+//!@#!@#!@#        goto Cleanup;
+//!@#!@#!@#    }
+//!@#!@#!@#
+//!@#!@#!@#    // Check if it's PKCS#7 Signed Data (for Authenticode Scenario)
+//!@#!@#!@#    status = CryptoPkcs7IsSigned(pkcs7);
+//!@#!@#!@#    if (!status) {
+//!@#!@#!@#        status = FALSE;
+//!@#!@#!@#        goto Cleanup;
+//!@#!@#!@#    }
+
+    //
+    // CertStack has following format:
+    // UINT8  CertNumber;
+    // UINT32 Cert1Length;
+    // UINT8  Cert1[];
+    // UINT32 Cert2Length;
+    // UINT8  Cert2[];
+    // ...
+    // UINT32 CertnLength;
+    // UINT8  Certn[];
+    //
+    status = FALSE;
+    bufferSize = sizeof(UINT8);
+    for (i = 0; ; i++)
+    {
+//!@#!@#!@#        // Get length in bytes of next cert
+//!@#!@#!@#        if (!CryptPkcs7GetNextCertSize(pkcs7, i, &nextCertSize))
+//!@#!@#!@#        {
+//!@#!@#!@#            // FALSE == Done
+//!@#!@#!@#            break;
+//!@#!@#!@#        }
+//!@#!@#!@#
+        // Get buffer for next cert
+        if (!(nextCert = TEE_Malloc(nextCertSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
+        {
+            goto Cleanup;
+        }
+
+//!@#!@#!@#        // Get next cert
+//!@#!@#!@#        if (!CryptPkcs7GetNextCert(pkcs7, i, nextCertSize, nextCert))
+//!@#!@#!@#        {
+//!@#!@#!@#            goto Cleanup;
+//!@#!@#!@#        }
+
+        // Add it to the list
+        prevSize = bufferSize;
+        prevBuf = certBuf;
+        bufferSize = prevSize + nextCertSize + sizeof(UINT32);
+        if (!(certBuf = TEE_Malloc(bufferSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
+        {
+            status = FALSE;
+            goto Cleanup;
+        }
+
+        // Bring over prevBuffer
+        if (prevBuf)
+        {
+            memcpy(certBuf, prevBuf, prevSize);
+            TEE_Free(prevBuf);
+            prevBuf = NULL;
+        }
+
+        // Add next cert to buffer
+        memcpy(certBuf + prevSize, &nextCertSize, sizeof(UINT32));
+        memcpy(certBuf + prevSize + sizeof(UINT32), nextCert, nextCertSize);
+
+        // More cleanup
+        TEE_Free(nextCert);
+        nextCert = NULL;
+    }
+
+    // Finish up
+    if (certBuf != NULL) {
+        // finalize cert count
+        certBuf[0] = i;
+
+        *RootCertSize = bufferSize - prevSize - sizeof(UINT32);
+        *RootCert = TEE_Malloc(*RootCertSize, TEE_USER_MEM_HINT_NO_FILL_ZERO);
+        if (*RootCert == NULL) {
+            goto Cleanup;
+        }
+
+        memcpy(*RootCert, certBuf + prevSize + sizeof(UINT32), *RootCertSize);
+        *CertStack = certBuf;
+        *StackSize = bufferSize;
+        status = TRUE;
+    }
+
+Cleanup:
+    // Release resources, if necessary
+    if (!wrapped)
+    {
+        TEE_Free(signedData);
+    }
+
+//    if (pkcs7)
+//    {
+//        TEE_Free(pkcs7);
+//    }
+//
+    if (nextCert)
+    {
+        TEE_Free(nextCert);
+    }
+
+    if (!status && (certBuf != NULL))
+    {
+        TEE_Free(certBuf);
+        *CertStack = NULL;
+    }
+
+    if (prevBuf)
+    {
+        TEE_Free(prevBuf);
+    }
+
+    return status;
+}
+
+// All DER objects are {tag, len, val}, but length is itself variable length.
+// This returns the start of the value so that we can add the length returned by 
+// the regular parsing functions
+int GetStartOfVal(char* msg, int pos)
+{
+    unsigned char lenByte = (unsigned char)msg[pos + 1];
+    if (lenByte < 127)return pos + 1 + 1;
+    int numBytes = msg[pos + 1] & 0x7f;
+    return pos + numBytes + 2;
 }
 
 static
@@ -294,8 +467,8 @@ BOOLEAN
 Pkcs7Verify(
     CONST UINT8  *P7Data,
     UINTN        P7Length,
-    CONST UINT8  *TrustedCert,
-    UINTN        CertLength,
+    CONST UINT8  *RootCert,
+    UINTN        RootCertSize,
     CONST UINT8  *InData,
     UINTN        DataLength
 )
@@ -307,8 +480,8 @@ Pkcs7Verify(
         "PKCS #7: Cryptographic Message Syntax Standard". The input
         signed data could be wrapped in a ContentInfo structure.
 
-        If P7Data, TrustedCert or InData is NULL, then return FALSE.
-        If P7Length, CertLength or DataLength overflow, then return FAlSE.
+        If P7Data, RootCert or InData is NULL, then return FALSE.
+        If P7Length, RootCertSize or DataLength overflow, then return FAlSE.
 
         Caution: This function may receive untrusted input. UEFI Authenticated
         Variable is external input, so this function will do basic check for
@@ -320,10 +493,10 @@ Pkcs7Verify(
 
         P7Length - Length of the PKCS#7 message in bytes.
 
-        TrustedCert - Pointer to a trusted/root certificate encoded in DER,
+        RootCert - Pointer to a trusted/root certificate encoded in DER,
                       which is used for certificate chain verification.
 
-        CertLength - Length of the trusted certificate in bytes.
+        RootCertSize - Length of the trusted certificate in bytes.
 
         InData - Pointer to the content to be verified.
 
@@ -337,34 +510,279 @@ Pkcs7Verify(
 
 --*/
 {
-    UINT8 *signedData = NULL;
+    BYTE signature[4096];
+    BYTE buffer[1024];
+    BYTE *bytePtr;
+    wc_Sha256 hashCtx;
+    DecodedCert cert[MAX_DECODED_CERTS];
+    RsaKey pubKey;
+    mp_int mpInt;
+    BYTE signerSerialNumber[64];
+    BYTE *signedData = NULL;
+    DecodedCert *match;
     UINTN signedDataSize = 0;
+    UINT32 p = 0; // msg Ptr
+    UINT32 startOfPtr, endOfPtr;
+    UINT32 i, index, seqLength, setLength;
+    UINT32 oidVal, startOfCerts, endOfCerts;
+    UINT32 length, numCerts, certsLength;
+    UINT32 sigLength, signerSerialSize = 64;
+    INT32  matchingCert = -1;
     BOOLEAN wrapped = FALSE;
-    BOOLEAN retVal = FALSE;
+    BOOLEAN status = FALSE;
 
     // Check input parameters.
-    if ((P7Data == NULL) || (TrustedCert == NULL) || (InData == NULL) ||
-        (P7Length > INT_MAX) || (CertLength > INT_MAX) || (DataLength > INT_MAX)) {
-        return FALSE;
+    if ((P7Data == NULL) || (RootCert == NULL) || (InData == NULL) ||
+        (P7Length > INT_MAX) || (RootCertSize > INT_MAX) || (DataLength > INT_MAX))
+    {
+        status = FALSE;
+        goto Cleanup;
     }
 
     // Wrap PKCS7 data, if necessary
     if (!WrapPkcs7Data(P7Data, P7Length, &wrapped, &signedData, &signedDataSize))
     {
-        retVal = FALSE;
+        status = FALSE;
         goto Cleanup;
     }
 
-    // TODO:
-    // 1. Populate PKCS7 Structure (d2i_PKCS7())
-    // 2. Make sure it's signed (no validation yet)
-    // 3. Get certs together
-    // 4. Verify the PKCS#7 signedData structure
+    // REVISIT: Parse this by hand because WolfCrypt cannot (yet)
+    //   0:  SignedData ::= SEQUENCE    {
+    //   1:    version CMSVersion,
+    //   2:    digestAlgorithms DigestAlgorithmIdentifiers,
+    //   3:    encapContentInfo EncapsulatedContentInfo,
+    //   4:    certificates [0] IMPLICIT CertificateSet OPTIONAL,
+    //   5:    crls [1] IMPLICIT RevocationInfoChoices OPTIONAL,
+    //   6:    signerInfos SignerInfos  }
 
-    extern UINT16 CryptHashStart(
-        PHASH_STATE      hashState,     // OUT: the running hash state
-        TPM_ALG_ID       hashAlg        // IN: hash algorithm
-    );
+    // 0:
+    WC_CHECK(GetSequence(signedData, &index, &seqLength, signedDataSize));
+
+
+    // 1: version CMSVersion
+    WC_CHECK(GetInt(&mpInt, signedData, &index, signedDataSize));
+    mp_free(&mpInt);
+
+
+    // 2: digestAlgorithms DigestAlgorithmIdentifiers
+    //    DigestAlgorithmIdentifiers ::= SET OF DigestAlgorithmIdentifier
+    startOfPtr = GetStartOfVal(signedData, p);
+    WC_CHECK(GetSet(signedData, &p, &setLength, signedDataSize));
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+    WC_CHECK(GetObjectId(signedData, &p, &oidVal, 0, signedDataSize));
+
+    // We only support a single hash OID (sha256)
+    if (oidVal != SHA256h)
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // Skip to the end of the DigestAlgorithmIdentifiers set
+    p = startOfPtr + setLength;
+
+
+    // 3: encapContentInfo EncapsulatedContentInfo
+    //    EncapsulatedContentInfo ::= SEQUENCE {
+    //      eContentType ContentType,
+    //      eContent[0] EXPLICIT OCTET STRING OPTIONAL
+    //    }
+    startOfPtr = GetStartOfVal(signedData, p);
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+    WC_CHECK(GetObjectId(signedData, &p, &oidVal, 0, signedDataSize));
+
+    // Is the type correct?
+    if (oidVal != DATA)
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // Do we have an eContent[0]?
+    if (p < startOfPtr + seqLength)
+    {
+        // REVISIT: extract the: eContent[0] EXPLICIT OCTET STRING OPTIONAL
+    }
+
+
+    // 4: certificates [0] IMPLICIT CertificateSet OPTIONAL
+    startOfCerts = GetStartOfVal(signedData, p);
+    bytePtr = signedData[p++];
+    if (bytePtr != (ASN_CONSTRUCTED | ASN_CONTEXT_SPECIFIC))
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // This is the length of the complete cert list
+    WC_CHECK(GetLength(signedData, &p, &certsLength, signedDataSize));
+
+    endOfCerts = startOfCerts + certsLength;
+
+    // REVISIT: Not sure why the length above is wrong
+    certsLength += 128;
+    for (i = 0; i < 10; i++)
+    { 
+        // The cert is a SEQUENCE, so find the length of this cert
+        startOfPtr = p; // Save p for later..
+        if (GetSequence(signedData, &p, &seqLength, certsLength) < 0)
+        {
+            break;
+        }
+
+        endOfPtr = p;
+        length = seqLength + (endOfPtr - startOfPtr);
+        InitDecodedCert(&cert[i], signedData + startOfPtr, length, 0);
+
+        // Ensure the cert parses
+        if (ParseCert(&cert[i], CERT_TYPE, NO_VERIFY, 0))
+        {
+            status = FALSE;
+            goto Cleanup;
+        }
+
+        // Are we at the end?
+        p = startOfPtr + length;
+        if (p == endOfCerts)
+        {
+            break;
+        }
+
+        // ...or worse, did we run off the end?
+        if (p > endOfCerts)
+        {
+            status = FALSE;
+            goto Cleanup;
+        }
+    }
+
+    // Cert count
+    numCerts = i;
+
+
+    // 5: crls [1] IMPLICIT RevocationInfoChoices OPTIONAL
+    // REVISIT: Unnecessary right now
+
+
+    // 6: signerInfos SignerInfos
+    //    SignerInfo ::= SEQUENCE {
+    //        6A:  version CMSVersion,
+    //        6B:  sid SignerIdentifier,
+    //        6C:  digestAlgorithm DigestAlgorithmIdentifier,
+    //        6D:  signedAttrs [0] IMPLICIT SignedAttributes OPTIONAL,
+    //        6E:  signatureAlgorithm SignatureAlgorithmIdentifier,
+    //        6F:  signature SignatureValue,
+    //        6G:  unsignedAttrs [1] IMPLICIT UnsignedAttributes OPTIONAL }
+    WC_CHECK(GetSet(signedData, &p, &setLength, signedDataSize));
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+
+    // 6A: version CMSVersion
+    WC_CHECK(GetInt(&mpInt, signedData, &p, signedDataSize));
+    mp_free(&mpInt); // REVISIT: Check the version?
+
+    // 6B: sid SignerIdentifier:  The signer idnetifier contains a subject
+    // name and a serial number. We will just use the serial number.
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+
+    startOfPtr = GetStartOfVal(signedData, p);
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+
+    // Skip the DN, and just use the serial number to find the cert
+    p = startOfPtr + seqLength;
+
+    // Get the signer cert serial number
+    WC_CHECK(GetSerialNumber(signedData, &p, signerSerialNumber, &signerSerialSize, signedDataSize));
+
+    // Get the hash alg	
+    startOfPtr = GetStartOfVal(signedData, p);
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+
+    // Just get the first hash alg oid (sha256)
+    WC_CHECK(GetObjectId(signedData, &p, &oidVal, 0, signedDataSize));
+
+    // We only support sha256
+    if (oidVal != SHA256h)
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // Skip the null
+    p = startOfPtr + seqLength;
+
+    // 6E: Get the signature alg
+    startOfPtr = GetStartOfVal(signedData, p);
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
+
+    // Just get the first hash
+    WC_CHECK(GetObjectId(signedData, &p, &oidVal, 0, signedDataSize));
+
+    // Skip the null
+    p = startOfPtr + seqLength;
+
+    // 6F: Get the signature as a simple OCTET STRING
+    p++; // (REVISIT: TAG?)
+    WC_CHECK(GetLength(signedData, &p, &sigLength, signedDataSize));
+    memcpy(signature, signedData + p, sigLength);
+
+    // Get the cert that matches the serial number
+    for (i = 0; i < numCerts; i++)
+    {
+        if (signerSerialSize != cert[i].serialSz)
+        {
+            continue;
+        }
+
+        if (memcmp(signerSerialNumber, cert[i].serial, signerSerialSize) != 0)
+        {
+            continue;
+        }
+
+        // We have a match
+        matchingCert = i;
+        break;
+    }
+
+    // We have a match?
+    if (matchingCert == -1)
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // Construct the thing that should've been signed
+    WC_CHECK(wc_InitSha256(&hashCtx));
+    WC_CHECK(wc_Sha256Update(&hashCtx, InData, DataLength));
+
+    // Place digest within signature block
+    bytePtr = (BYTE*)(Sha256SignatureBlock + 19);
+    WC_CHECK(wc_Sha256Final(&hashCtx, bytePtr));
+
+    // Now, use the decoded cert to validate the signature
+    match = &cert[matchingCert];
+    wc_InitRsaKey(&pubKey, NULL);
+    WC_CHECK(wc_RsaPublicKeyDecode(match->publicKey, &index, &pubKey, 8192));
+
+    // REVISIT: This operation won't work in a general case. Really need to 
+    // do a signature verifification against the Sha256SignatureBlock.
+    length = wc_RsaSSL_Verify(signature, sigLength, buffer, sizeof(buffer), &pubKey);
+
+    // Error or unexpected langth?
+    if ((length < 0) || (length != sizeof(Sha256SignatureBlock)))
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // Verify signature
+    if (memcmp(Sha256SignatureBlock, buffer, sizeof(Sha256SignatureBlock)))
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // We have a match
+    status = TRUE;
 
 Cleanup:
     if (!wrapped)
@@ -372,7 +790,7 @@ Cleanup:
         TEE_Free(signedData);
     }
 
-    return retVal;
+    return status;
 }
 
 static
@@ -632,6 +1050,7 @@ PopulateCerts(
     // We assume we have a Var1 (otherwise why were we called) but Var2 is optional
     if (Var2 != SecureBootVariableEnd)
     {
+        DMSG("doboth");
         doBoth = TRUE;
     }
 
@@ -639,6 +1058,7 @@ PopulateCerts(
     status = ReadSecurebootVariables(Var1, &data1, &data1Size);
     if (status != TEE_SUCCESS)
     {
+        DMSG("readsecure failed00000 %x", status);
         goto Cleanup;
     }
 
@@ -646,6 +1066,7 @@ PopulateCerts(
     status = ParseSecurebootVariables(data1, data1Size, ParseOpX509, NULL, &count1);
     if (status != TEE_SUCCESS)
     {
+        DMSG("ParseSecurebootVariables0000 %x", status); 
         goto Cleanup;
     }
 
@@ -655,6 +1076,7 @@ PopulateCerts(
         status = ReadSecurebootVariables(Var2, &data2, &data2Size);
         if (status != TEE_SUCCESS)
         {
+            DMSG("readsecure failed1111 %x", status);
             goto Cleanup;
         }
 
@@ -662,6 +1084,7 @@ PopulateCerts(
         status = ParseSecurebootVariables(data2, data2Size, ParseOpX509, NULL, &count2);
         if (status != TEE_SUCCESS)
         {
+            DMSG("ParseSecurebootVariables failed1111 %x", status);
             goto Cleanup;
         }
     }
@@ -669,6 +1092,7 @@ PopulateCerts(
     certs = TEE_Malloc((sizeof(DATA_BLOB) * (count1 + count2)), 0);
     if (!certs)
     {
+        DMSG("malloc failed1111 %x", certs);
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
@@ -678,12 +1102,14 @@ PopulateCerts(
     status = ParseSecurebootVariables(data1, data1Size, ParseOpX509, certs, &parsedCount);
     if (status != TEE_SUCCESS)
     {
+        DMSG("ParseSecurebootVariables failed2222 %x", status);
         goto Cleanup;
     }
 
     // TODO: Should be assert
     if (parsedCount != count1)
     {
+        DMSG("parsedCount %x, count: %x", parsedCount, count1);
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -695,12 +1121,14 @@ PopulateCerts(
         status = ParseSecurebootVariables(data2, data2Size, ParseOpX509, &certs[count1], &parsedCount);
         if (status != TEE_SUCCESS)
         {
+            DMSG("ParseSecurebootVariables failed33333 %x", status);
             goto Cleanup;
         }
 
         // TODO: Should be assert
         if (parsedCount != count2)
         {
+            DMSG("parsedCount22222 %x, count: %x", parsedCount, count2);
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
@@ -708,6 +1136,7 @@ PopulateCerts(
 
     *Certs = certs;
     *NumberOfCerts = count1 + count2;
+    DMSG("NumberOfCerts: %x", *NumberOfCerts);
 
 Cleanup:
     TEE_Free(data1);
@@ -1063,7 +1492,48 @@ AuthenticateSetVariable(
         goto Cleanup;
     }
     
-    DMSG("DS:%x SDS:%x smdS: %x", DataSize, signedDataSize, dataSize);
+    //
+    //{
+    //    volatile uint32_t counter0, counter1, mainCounter;
+    //    static volatile uint32_t collector = 1;
+    //    int i;
+    //
+    //    DMSG("DS:%x SDS:%x smdS: %x", DataSize, signedDataSize, dataSize);
+    //
+    //    DMSG("****************");
+    //    for (i = 0; i < ((dataSize) / 16 + 1); i++)
+    //    {
+    //        //DHEXDUMP((Data + (i * 16)), 16);
+    //        DHEXDUMP((data + (i * 16)), 16);
+    //        for (counter1 = 1; counter1 < 10000000; counter1++) {
+    //            collector = (collector + 1) * mainCounter;
+    //        }
+    //    }
+    //    //DMSG("****************");
+    //    //for (counter0 = 1; counter0 < 100000; counter0++) {
+    //    //    mainCounter++;
+    //    //    for (counter1 = 1; counter1 < 100000; counter1++) {
+    //    //        collector = (collector + 1) * mainCounter;
+    //    //    }
+    //    //}
+    //    //for (i = 0; i < ((signedDataSize) / 16 + 1); i++)
+    //    //{
+    //    //    DHEXDUMP((signedData + (i * 16)), 16);
+    //    //    for (counter1 = 1; counter1 < 10000000; counter1++) {
+    //    //        collector = (collector + 1) * mainCounter;
+    //    //    }
+    //    //}
+    //
+    //    DMSG("****************");
+    //    for (counter0 = 1; counter0 < 1000; counter0++) {
+    //        mainCounter++;
+    //        for (counter1 = 1; counter1 < 1000; counter1++) {
+    //            collector = (collector + 1) * mainCounter;
+    //        }
+    //    }
+    //}
+
+
 
     // If we have a time field, make sure it is updated (unless this is an append)
     if ((Attributes.AppendWrite) || (Var == NULL))
@@ -1103,9 +1573,8 @@ AuthenticateSetVariable(
         goto Cleanup;
     }
 
-    // Calculate data-to-verify size                       sizeof(Attributes)!
-    // REVISIT: Verify this                                     \/\/\/
-    dataToVerifySize = UnicodeName->Length + sizeof(GUID) + sizeof(ATTRIBUTES) + sizeof(EFI_TIME) + dataSize;
+    // Calculate data-to-verify size
+    dataToVerifySize = UnicodeName->Length + sizeof(GUID) + sizeof(UINT32) + sizeof(EFI_TIME) + dataSize;
 
     // Integer overflow check.
     if (dataToVerifySize < dataSize)
@@ -1131,8 +1600,8 @@ AuthenticateSetVariable(
     memmove(dataToVerify + index, VendorGuid, sizeof(GUID));
     index += sizeof(GUID);
 
-    memmove(dataToVerify + index, &Attributes, sizeof(UINT32));
-    index += sizeof(ATTRIBUTES);
+    memmove(dataToVerify + index, &Attributes.Flags, sizeof(UINT32));
+    index += sizeof(UINT32);
 
     memmove(dataToVerify + index, &efiTime, sizeof(EFI_TIME));
     index += sizeof(EFI_TIME);
@@ -1147,6 +1616,24 @@ AuthenticateSetVariable(
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
+
+///    {
+///        volatile uint32_t counter0, counter1, mainCounter;
+///        static volatile uint32_t collector = 1;
+///        int i;
+///
+///        DMSG("*******datatoverfy*********");
+///        for (i = 0; i < ((dataToVerifySize) / 16 + 1); i++)
+///        {
+///
+///            DHEXDUMP((dataToVerify + (i * 16)), 16);
+///            for (counter1 = 1; counter1 < 10000000; counter1++) {
+///                collector = (collector + 1) * mainCounter;
+///            }
+///        }
+///        DMSG("*******datatoverfyendenddnendnd*********");
+///
+///    }
 
     DMSG("IdentifySecureBootVarialbe");
 

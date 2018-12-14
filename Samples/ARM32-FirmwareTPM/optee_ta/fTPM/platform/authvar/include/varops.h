@@ -60,17 +60,17 @@ extern void _plat__NvMemoryMove(
     );
 
 typedef union {
-    BYTE  Flags;
+    UINT32  Flags;
     struct
     {
-        BYTE NonVolatile   : 1,    // EFI_VARIABLE_NON_VOLATILE
-             BootService   : 1,    // EFI_VARIABLE_BOOTSERVICE_ACCESS
-             RuntimeAccess : 1,    // EFI_VARIABLE_RUNTIME_ACCESS
-             HwErrorRec    : 1,    // EFI_VARIABLE_HARDWARE_ERROR_RECORD
-             AuthWrite     : 1,    // EFI_VARIABLE_AUTHENTICATED_WRITE_ACCESS
-             TimeBasedAuth : 1,    // EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS
-             AppendWrite   : 1,    // EFI_VARIABLE_APPEND_WRITE
-             unused0       : 1;    // Unused
+        UINT32 NonVolatile   : 1,    // EFI_VARIABLE_NON_VOLATILE
+               BootService   : 1,    // EFI_VARIABLE_BOOTSERVICE_ACCESS
+               RuntimeAccess : 1,    // EFI_VARIABLE_RUNTIME_ACCESS
+               HwErrorRec    : 1,    // EFI_VARIABLE_HARDWARE_ERROR_RECORD
+               AuthWrite     : 1,    // EFI_VARIABLE_AUTHENTICATED_WRITE_ACCESS
+               TimeBasedAuth : 1,    // EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS
+               AppendWrite   : 1,    // EFI_VARIABLE_APPEND_WRITE
+               unused0       : 25;   // Unused
     };
 } ATTRIBUTES, *PATTRIBUTES;
 

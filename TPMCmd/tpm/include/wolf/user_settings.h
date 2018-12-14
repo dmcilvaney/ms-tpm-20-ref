@@ -88,9 +88,16 @@
 #endif
 
 /* Disable explicit RSA. The TPM support for RSA is dependent only on TFM */
-#define NO_RSA
+//#define NO_RSA
 #define NO_RC4
-#define NO_ASN
+//#define NO_ASN
+
+// quiet warnings
+#define TFM_TIMING_RESISTANT
+#define ECC_TIMING_RESISTANT
+#define WC_RSA_BLINDING
+#define HAVE_ECC_VERIFY
+
 
 /* Enable debug wolf library check */
 //#define LIBRARY_COMPATIBILITY_CHECK

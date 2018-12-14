@@ -34,14 +34,16 @@
 #pragma once
 #include <varmgmt.h>
 
-// Definitios/includes for fTPM crypto layer
-#include <limits.h>
-#include <BaseTypes.h>
-#include <GpMacros.h>
-#include <Capabilities.h>
-#include <TpmTypes.h>
-#include <TpmToWolfHash.h>
-#include <CryptHash.h>
+// WolfCrypt includes and related defintions
+#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/ssl.h>
+#include <wolfssl/wolfcrypt/types.h>
+#include <wolfssl/wolfcrypt/sha256.h>
+#include <wolfssl/wolfcrypt/asn_public.h>
+#include <wolfssl/wolfcrypt/asn.h>
+#include <wolfssl/wolfcrypt/signature.h>
+#include <wolfssl/wolfcrypt/rsa.h>
+#include <wolfssl/wolfcrypt/pkcs7.h>
 
 //
 // The WIN_CERTIFICATE structure is part of the PE/COFF specification.
