@@ -249,4 +249,4 @@ tpm_files = \
  tpm_symlink/TPMCmd/tpm/src/support/TpmSizeChecks.c \
 
 srcs-y = $(foreach tpmfile, $(tpm_files), $(tpmfile) )
-$(foreach tpmfile, $(tpm_files), $(eval  cflags-$(tpmfile)-y += -DWIZZBANG $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(FTPM_INCLUDES) $(FTPM_WARNING_SUPPRESS)))
+$(foreach tpmfile, $(tpm_files), $(eval  cflags-$(tpmfile)-y += $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(FTPM_INCLUDES) $(FTPM_WARNING_SUPPRESS)))
