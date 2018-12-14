@@ -31,19 +31,24 @@ remove_wolf_symlink:
 global-incdirs-y += wolf_symlink
 
 wolf_crypt_files = \
-wolf_symlink/wolfcrypt/src/aes.c \
+ wolf_symlink/wolfcrypt/src/aes.c \
  wolf_symlink/wolfcrypt/src/asn.c \
+ wolf_symlink/wolfcrypt/src/coding.c \
+ wolf_symlink/wolfcrypt/src/des3.c \
  wolf_symlink/wolfcrypt/src/ecc.c \
+ wolf_symlink/wolfcrypt/src/hash.c \
+ wolf_symlink/wolfcrypt/src/hmac.c \
  wolf_symlink/wolfcrypt/src/integer.c \
+ wolf_symlink/wolfcrypt/src/md5.c \
  wolf_symlink/wolfcrypt/src/memory.c \
+ wolf_symlink/wolfcrypt/src/pwdbased.c \
+ wolf_symlink/wolfcrypt/src/random.c \
  wolf_symlink/wolfcrypt/src/rsa.c \
  wolf_symlink/wolfcrypt/src/sha.c \
  wolf_symlink/wolfcrypt/src/sha256.c \
  wolf_symlink/wolfcrypt/src/sha512.c \
  wolf_symlink/wolfcrypt/src/tfm.c \
  wolf_symlink/wolfcrypt/src/wolfmath.c \
- wolf_symlink/wolfcrypt/src/des3.c \
- wolf_symlink/wolfcrypt/src/random.c \
 
 srcs-y = $(foreach wcfile, $(wolf_crypt_files), $(wcfile) )
 $(foreach wcfile, $(wolf_crypt_files), $(eval  cflags-$(wcfile)-y += -DFOOBAR $(WOLF_SSL_FLAGS) $(WOLF_WARNING_SUPPRESS)))

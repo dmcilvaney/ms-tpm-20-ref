@@ -48,6 +48,10 @@ typedef uint64_t clock_t;
 #define XMEMCPY(pdest, psrc, size) memcpy((pdest), (psrc), (size))
 #endif
 
+#ifndef XMEMMOVE
+#define XMEMMOVE(pdest, psrc, size) memmove((pdest), (psrc), (size))
+#endif
+
 #ifndef XMEMSET
 #define XMEMSET(pdest, value, size) memset((pdest), (value), (size))
 #endif
@@ -58,6 +62,15 @@ typedef uint64_t clock_t;
 
 #ifndef XSTRNCPY
 #define XSTRNCPY(str1,str2,n) strncpy((str1),(str2),(n))
+#endif
+
+#ifndef XSTRNCAT
+char *strncat(char *dst, const char *src, size_t siz);
+#define XSTRNCAT(dest, src, n) strncat(dest, src, n)
+#endif
+
+#ifndef XSNPRINTF
+#define XSNPRINTF snprintf
 #endif
 
 #ifndef XSTRNCASECMP
@@ -86,8 +99,13 @@ int tolower (int c);
 #undef  WC_NO_HASHDRBG
 #define WC_NO_HASHDRBG
 
+#if defined HAVE_TIME_T_TYPE
+    typedef long time_t;
+#endif
+
 /* Bypass P-RNG and use only HW RNG */
 extern int wolfRand(unsigned char* output, unsigned int sz);
 #undef  CUSTOM_RAND_GENERATE_BLOCK
 #define CUSTOM_RAND_GENERATE_BLOCK  wolfRand
+
 #endif

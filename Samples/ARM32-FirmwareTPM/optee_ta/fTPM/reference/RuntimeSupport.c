@@ -73,6 +73,19 @@ int strncasecmp(const char *str1, const char *str2, size_t n)
     return 0;
 }
 
+char *strcat(char *dst, const char *src)
+{
+    strncat(dst, src, strlen(src));
+}
+
+char *strncat(char *dst, const char *src, size_t siz)
+{
+    char *c = dst + strlen(dst);
+    while(siz-- && (*c++ = *src++));
+    *c = '\0';
+	return dst;
+}
+
 #ifdef CUSTOM_RAND_GENERATE_BLOCK
 #include <tee_internal_api.h>
 int wolfRand(unsigned char* output, unsigned int sz)
