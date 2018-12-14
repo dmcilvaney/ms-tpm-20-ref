@@ -287,170 +287,6 @@ WrapPkcs7Data(
     return TRUE;
 }
 
-static
-BOOLEAN
-Pkcs7GetSigners(
-    CONST UINT8  *P7Data,
-    UINTN        P7Length,
-    UINT8        **CertStack,
-    UINTN        *StackSize,
-    UINT8        **RootCert,
-    UINTN        *RootCertSize
-)
-//
-{
-    UINTN bufferSize, i;
-    UINTN prevSize;
-    UINTN nextCertSize;
-    UINTN signedDataSize;
-    UINT8 *nextCert;
-    UINT8 *certBuf;
-    UINT8 *signedData;
-    UINT8 *prevBuf;
-    BOOLEAN wrapped, status;
-
-    // Parameter validation
-    if ((P7Data == NULL) || (CertStack == NULL) || (StackSize == NULL) ||
-        (RootCert == NULL) || (RootCertSize == NULL) || (P7Length > INT_MAX)) {
-        status = FALSE;
-        goto Cleanup;
-
-    }
-
-    // Wrap PKCS7 data if not already
-    status = WrapPkcs7Data(P7Data, P7Length, &wrapped, &signedData, &signedDataSize);
-    if (!status) {
-        goto Cleanup;
-    }
-
-    // Retrieve PKCS#7 Data (DER encoding)
-    if (signedDataSize > INT_MAX) {
-        status = FALSE;
-        goto Cleanup;
-    }
-
-//!@#!@#!@#    // De-Serialize PKCS7 data
-//!@#!@#!@#    status = CryptPkcs7FromData(signedData, signedDataSize, &pkcs7);
-//!@#!@#!@#    if (!status) {
-//!@#!@#!@#        goto Cleanup;
-//!@#!@#!@#    }
-//!@#!@#!@#
-//!@#!@#!@#    // Check if it's PKCS#7 Signed Data (for Authenticode Scenario)
-//!@#!@#!@#    status = CryptoPkcs7IsSigned(pkcs7);
-//!@#!@#!@#    if (!status) {
-//!@#!@#!@#        status = FALSE;
-//!@#!@#!@#        goto Cleanup;
-//!@#!@#!@#    }
-
-    //
-    // CertStack has following format:
-    // UINT8  CertNumber;
-    // UINT32 Cert1Length;
-    // UINT8  Cert1[];
-    // UINT32 Cert2Length;
-    // UINT8  Cert2[];
-    // ...
-    // UINT32 CertnLength;
-    // UINT8  Certn[];
-    //
-    status = FALSE;
-    bufferSize = sizeof(UINT8);
-    for (i = 0; ; i++)
-    {
-//!@#!@#!@#        // Get length in bytes of next cert
-//!@#!@#!@#        if (!CryptPkcs7GetNextCertSize(pkcs7, i, &nextCertSize))
-//!@#!@#!@#        {
-//!@#!@#!@#            // FALSE == Done
-//!@#!@#!@#            break;
-//!@#!@#!@#        }
-//!@#!@#!@#
-        // Get buffer for next cert
-        if (!(nextCert = TEE_Malloc(nextCertSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
-        {
-            goto Cleanup;
-        }
-
-//!@#!@#!@#        // Get next cert
-//!@#!@#!@#        if (!CryptPkcs7GetNextCert(pkcs7, i, nextCertSize, nextCert))
-//!@#!@#!@#        {
-//!@#!@#!@#            goto Cleanup;
-//!@#!@#!@#        }
-
-        // Add it to the list
-        prevSize = bufferSize;
-        prevBuf = certBuf;
-        bufferSize = prevSize + nextCertSize + sizeof(UINT32);
-        if (!(certBuf = TEE_Malloc(bufferSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
-        {
-            status = FALSE;
-            goto Cleanup;
-        }
-
-        // Bring over prevBuffer
-        if (prevBuf)
-        {
-            memcpy(certBuf, prevBuf, prevSize);
-            TEE_Free(prevBuf);
-            prevBuf = NULL;
-        }
-
-        // Add next cert to buffer
-        memcpy(certBuf + prevSize, &nextCertSize, sizeof(UINT32));
-        memcpy(certBuf + prevSize + sizeof(UINT32), nextCert, nextCertSize);
-
-        // More cleanup
-        TEE_Free(nextCert);
-        nextCert = NULL;
-    }
-
-    // Finish up
-    if (certBuf != NULL) {
-        // finalize cert count
-        certBuf[0] = i;
-
-        *RootCertSize = bufferSize - prevSize - sizeof(UINT32);
-        *RootCert = TEE_Malloc(*RootCertSize, TEE_USER_MEM_HINT_NO_FILL_ZERO);
-        if (*RootCert == NULL) {
-            goto Cleanup;
-        }
-
-        memcpy(*RootCert, certBuf + prevSize + sizeof(UINT32), *RootCertSize);
-        *CertStack = certBuf;
-        *StackSize = bufferSize;
-        status = TRUE;
-    }
-
-Cleanup:
-    // Release resources, if necessary
-    if (!wrapped)
-    {
-        TEE_Free(signedData);
-    }
-
-//    if (pkcs7)
-//    {
-//        TEE_Free(pkcs7);
-//    }
-//
-    if (nextCert)
-    {
-        TEE_Free(nextCert);
-    }
-
-    if (!status && (certBuf != NULL))
-    {
-        TEE_Free(certBuf);
-        *CertStack = NULL;
-    }
-
-    if (prevBuf)
-    {
-        TEE_Free(prevBuf);
-    }
-
-    return status;
-}
-
 // All DER objects are {tag, len, val}, but length is itself variable length.
 // This returns the start of the value so that we can add the length returned by 
 // the regular parsing functions
@@ -467,8 +303,8 @@ BOOLEAN
 Pkcs7Verify(
     CONST UINT8  *P7Data,
     UINTN        P7Length,
-    CONST UINT8  *RootCert,
-    UINTN        RootCertSize,
+    UINT32       CertCount,
+    CONST UINT8  *CertList,
     CONST UINT8  *InData,
     UINTN        DataLength
 )
@@ -514,7 +350,8 @@ Pkcs7Verify(
     BYTE buffer[1024];
     BYTE *bytePtr;
     wc_Sha256 hashCtx;
-    DecodedCert cert[MAX_DECODED_CERTS];
+    DecodedCert *cert[MAX_DECODED_CERTS];
+    DecodedCert *certList;
     RsaKey pubKey;
     mp_int mpInt;
     BYTE signerSerialNumber[64];
@@ -532,8 +369,15 @@ Pkcs7Verify(
     BOOLEAN status = FALSE;
 
     // Check input parameters.
-    if ((P7Data == NULL) || (RootCert == NULL) || (InData == NULL) ||
-        (P7Length > INT_MAX) || (RootCertSize > INT_MAX) || (DataLength > INT_MAX))
+    if ((P7Data == NULL) || (P7Length > INT_MAX) ||
+        (InData == NULL) || (DataLength > INT_MAX))
+    {
+        status = FALSE;
+        goto Cleanup;
+    }
+
+    // If we have a cert list, verify size
+    if ((CertCount) && !(CertList))
     {
         status = FALSE;
         goto Cleanup;
@@ -622,7 +466,7 @@ Pkcs7Verify(
     // REVISIT: Not sure why the length above is wrong
     certsLength += 128;
     for (i = 0; i < 10; i++)
-    { 
+    {
         // The cert is a SEQUENCE, so find the length of this cert
         startOfPtr = p; // Save p for later..
         if (GetSequence(signedData, &p, &seqLength, certsLength) < 0)
@@ -635,6 +479,7 @@ Pkcs7Verify(
         InitDecodedCert(&cert[i], signedData + startOfPtr, length, 0);
 
         // Ensure the cert parses
+        // TODO: WE LEAK THESE FREE THEM WHEN DONE!!
         if (ParseCert(&cert[i], CERT_TYPE, NO_VERIFY, 0))
         {
             status = FALSE;
@@ -656,9 +501,18 @@ Pkcs7Verify(
         }
     }
 
-    // Cert count
-    numCerts = i;
-
+    // If we've been given a CertList use that instead.
+    // (We still went through the above loop since we need to establish 'p')
+    if (CertCount)
+    {
+        certList = CertList;
+        numCerts = CertCount;
+    }
+    else
+    {
+        certList = cert;
+        numCerts = i;
+    }
 
     // 5: crls [1] IMPLICIT RevocationInfoChoices OPTIONAL
     // REVISIT: Unnecessary right now
@@ -728,12 +582,12 @@ Pkcs7Verify(
     // Get the cert that matches the serial number
     for (i = 0; i < numCerts; i++)
     {
-        if (signerSerialSize != cert[i].serialSz)
+        if (signerSerialSize != certList[i].serialSz)
         {
             continue;
         }
 
-        if (memcmp(signerSerialNumber, cert[i].serial, signerSerialSize) != 0)
+        if (memcmp(signerSerialNumber, certList[i].serial, signerSerialSize) != 0)
         {
             continue;
         }
@@ -750,7 +604,7 @@ Pkcs7Verify(
         goto Cleanup;
     }
 
-    // Construct the thing that should've been signed
+    // Compute exptected hash value
     WC_CHECK(wc_InitSha256(&hashCtx));
     WC_CHECK(wc_Sha256Update(&hashCtx, InData, DataLength));
 
@@ -759,7 +613,7 @@ Pkcs7Verify(
     WC_CHECK(wc_Sha256Final(&hashCtx, bytePtr));
 
     // Now, use the decoded cert to validate the signature
-    match = &cert[matchingCert];
+    match = &certList[matchingCert];
     wc_InitRsaKey(&pubKey, NULL);
     WC_CHECK(wc_RsaPublicKeyDecode(match->publicKey, &index, &pubKey, 8192));
 
@@ -790,6 +644,16 @@ Cleanup:
         TEE_Free(signedData);
     }
 
+    // If we were not provided a cert list, free decoded certs.
+    // The caller is responsible for the list they provided.
+    if (!(CertCount))
+    {
+        for (i = 0; i < numCerts; i++)
+        {
+            FreeDecodedCert(cert[i]);
+        }
+    }
+
     return status;
 }
 
@@ -799,7 +663,7 @@ ParseSecurebootVariables(
     PBYTE Data,                 // IN
     UINT32 DataSize,            // IN
     PARSE_SECURE_BOOT_OP Op,    // IN
-    PDATA_BLOB Certs,           // INOUT
+    DecodedCert *Certs,           // INOUT
     PUINT32 NumberOfCerts       // INOUT
 )
 /*++
@@ -885,7 +749,7 @@ ParseSecurebootVariables(
                 for (i = 0; i < numberOfEntries; i++)
                 {
                     // TODO: Should be assert
-                    if (firstCert == NULL)
+                    if (!(firstCert))
                     {
                         status = TEE_ERROR_BAD_PARAMETERS;
                         goto Cleanup;
@@ -899,15 +763,12 @@ ParseSecurebootVariables(
                         goto Cleanup;
                     }
 
-                    Certs[index].DataSize = certSize;
-
-                    //if (!(Certs[index].Data = TREE_Malloc(certSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
-                    //{
-                    //    status = TEE_ERROR_OUT_OF_MEMORY;
-                    //    goto Cleanup;
-                    //}
-                    //
-                    //memmove(Certs[index].Data, certEntry, certSize);
+                    InitDecodedCert(&Certs[index], certEntry, certSize, 0);
+                    if (ParseCert(&Certs[index], CERT_TYPE, NO_VERIFY, 0))
+                    {
+                        status = TEE_ERROR_BAD_PARAMETERS;
+                        goto Cleanup;
+                    }
 
                     index++;
                 }
@@ -926,14 +787,6 @@ ParseSecurebootVariables(
     *NumberOfCerts = numberOfCerts;
 
 Cleanup:
-    if (status != TEE_SUCCESS)
-    {
-        for (i = 0; (i < index) && (i < *NumberOfCerts); i++)
-        {
-            TEE_Free(Certs[i].Data);
-        }
-    }
-
     return status;
 }
 
@@ -1089,7 +942,7 @@ PopulateCerts(
         }
     }
 
-    certs = TEE_Malloc((sizeof(DATA_BLOB) * (count1 + count2)), 0);
+    certs = TEE_Malloc((sizeof(DecodedCert) * (count1 + count2)), TEE_USER_MEM_HINT_NO_FILL_ZERO);
     if (!certs)
     {
         DMSG("malloc failed1111 %x", certs);
@@ -1342,7 +1195,7 @@ CheckForDuplicateSignatures(
             for (j = 0; j < existingNumberOfCerts; j++)
             {
 
-                if ((certSize == existingCerts[j].DataSize) && (memcmp(certEntry, existingCerts[j].Data, certSize) == 0))
+                if ((certSize == existingCerts[j].Size) && (memcmp(certEntry, existingCerts[j].Data, certSize) == 0))
                 {
                     duplicatesFound = TRUE;
 
@@ -1861,7 +1714,7 @@ SecureBootVarAuth(
            - The serialized stream of the UEFI variable info + payload data.
 --*/
 {
-    PDATA_BLOB certs = NULL;
+    DecodedCert *certs = NULL;
     ULONG numberOfCerts = 0, i;
     SECUREBOOT_VARIABLE var2 = SecureBootVariableEnd;
     BOOLEAN verifyStatus = FALSE;
@@ -1904,19 +1757,20 @@ SecureBootVarAuth(
             goto Cleanup;
         }
 
-        // Iterate through all the certs to find one that verifys OK.
-        for (i = 0; i < numberOfCerts; i++)
-        {
-            if (verifyStatus = Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
-                                           certs[i].Data, certs[i].DataSize,
-                                           DataToVerify, DataToVerifySize)) 
-            {
-                break;
-            }
-        }
+        verifyStatus = Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
+                                   numberOfCerts, certs,
+                                   DataToVerify, DataToVerifySize);
 
         // DEBUG/REVISIT/TODO: REMOVE THIS!!
         verifyStatus = 1;
+
+        // Free resources used on verify
+        for (i = 0; i < numberOfCerts; i++)
+        {
+            FreeDecodedCert(&certs[i]);
+        }
+
+        TEE_Free(certs);
 
         if (!verifyStatus)
         {
@@ -1933,21 +1787,9 @@ SecureBootVarAuth(
     //
     else if (Id == SecureBootVariablePK)
     {
-        //
-        // In this mode the PK is expected to have been self-signed.
-        // First, get signer's certificates from PK variable data.
-        //
-        if (!(Pkcs7GetSigners(AuthenticationData, AuthenticationDataSize,
-                              &signerCerts, &signerCertStackSize,
-                              &rootCert, &rootCertSize)))
-        {
-            status = TEE_ERROR_ACCESS_DENIED;
-            goto Cleanup;
-        }
-
-        // Second, Verify Pkcs7 AuthenticationData via Pkcs7Verify library.
+        // Verify Pkcs7 AuthenticationData
         if (!(Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
-                          rootCert, rootCertSize,
+                          0, NULL,
                           DataToVerify, DataToVerifySize)))
         {
             status = TEE_ERROR_ACCESS_DENIED;
@@ -1961,24 +1803,7 @@ SecureBootVarAuth(
 
     status = TEE_SUCCESS;
 
-Cleanup:
-    for (i = 0; i < numberOfCerts; i++)
-    {
-        TEE_Free(certs[i].Data);
-    }
-
-    TEE_Free(certs);
-
-    if (signerCerts != NULL)
-    {
-        TEE_Free(signerCerts);
-    }
-
-    if (rootCert != NULL)
-    {
-        TEE_Free(rootCert);
-    }
-
+ Cleanup:
     return status;
 }
 

@@ -934,7 +934,7 @@ CreateVariable(
         // Get size if extended attributes (if provided)
         if (ExtAttributes)
         {
-            extAttribLen = sizeof(EXTENDED_ATTRIBUTES) + ExtAttributes->PublicKey.DataSize;
+            extAttribLen = sizeof(EXTENDED_ATTRIBUTES) + ExtAttributes->PublicKey.Size;
         }
         else
         {
@@ -1367,8 +1367,8 @@ AppendVariable(
 
                 // Sanity check sizes
                 extAttrib = (PEXTENDED_ATTRIBUTES)(Var->BaseAddress + Var->ExtAttribOffset);
-                extAttribLen = sizeof(EXTENDED_ATTRIBUTES) + ExtAttributes->PublicKey.DataSize;
-                if (extAttribLen != (sizeof(EXTENDED_ATTRIBUTES) + extAttrib->PublicKey.DataSize))
+                extAttribLen = sizeof(EXTENDED_ATTRIBUTES) + ExtAttributes->PublicKey.Size;
+                if (extAttribLen != (sizeof(EXTENDED_ATTRIBUTES) + extAttrib->PublicKey.Size))
                 {
                     status = TEE_ERROR_BAD_PARAMETERS;
                     goto Cleanup;

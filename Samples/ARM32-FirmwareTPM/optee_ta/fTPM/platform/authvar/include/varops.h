@@ -75,8 +75,8 @@ typedef union {
 } ATTRIBUTES, *PATTRIBUTES;
 
 typedef struct _DATA_BLOB {
-    UINT32 DataSize;        // Size of data
-    BYTE Data[0];           // Data
+    UINT32 Size;    // Size of data
+    BYTE Data[0];   // Data
 } DATA_BLOB, *PDATA_BLOB;
 
 // Extended attributes for authenticated variables
@@ -119,7 +119,7 @@ typedef struct _VARIABLE_GET_PARAM
     UINT32 Size;            // Request size
     UINT16 NameSize;        // Size of variable name
     GUID VendorGuid;        // Associated GUID
-    WCHAR Name[1];          // Variable name
+    WCHAR Name[0];          // Variable name
 } VARIABLE_GET_PARAM, VARIABLE_GET_NEXT_PARAM, VARIABLE_GET_NEXT_RESULT, *PVARIABLE_GET_PARAM;
 typedef struct _VARIABLE_GET_PARAM *PVARIABLE_GET_NEXT_PARAM, *PVARIABLE_GET_NEXT_RESULT;
 
@@ -129,7 +129,7 @@ typedef struct _VARIABLE_GET_RESULT
     UINT32 Size;            // Size of response (total)
     UINT32 Attributes;      // Associated UEFI variable attributes
     UINT32 DataSize;        // Size of variable data
-    BYTE Data[1];           // Variable data
+    BYTE Data[0];           // Variable data
 } VARIABLE_GET_RESULT, *PVARIABLE_GET_RESULT;
 
 // Parameter Struct for Set Operations. No data returned in result!
@@ -142,7 +142,7 @@ typedef struct _VARIABLE_SET_PARAM
     UINT32 DataSize;        // Size of variable data
     UINT32 OffsetName;      // Offset to variable name
     UINT32 OffsetData;      // Offset to variable data
-    BYTE Payload[1];        // Start of "payload", indexed by offsets
+    BYTE Payload[0];        // Start of "payload", indexed by offsets
 } VARIABLE_SET_PARAM, *PVARIABLE_SET_PARAM; // Immediately followed by name and data
 
 // Parameter struct for Query
