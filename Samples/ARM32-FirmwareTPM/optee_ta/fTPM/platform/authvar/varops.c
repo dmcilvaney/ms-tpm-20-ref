@@ -390,6 +390,7 @@ SetVariable(
         || (SetParam->Size != sizeof(VARIABLE_SET_PARAM)))
     {
         EMSG("Set variable bad parameters");
+        EMSG("sp: %x, sps : %x, sp->s : %x", SetParam, SetParamSize, SetParam->Size);
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
