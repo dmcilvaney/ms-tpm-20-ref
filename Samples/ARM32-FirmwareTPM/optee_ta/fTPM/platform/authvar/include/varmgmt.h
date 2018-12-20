@@ -41,6 +41,9 @@ typedef struct _MEMORY_RECLAMATION_NODE
     UINT_PTR NV_Offset;          // The offset into NV being tracked
 } MEMORY_RECLAMATION_NODE, *PMEMORY_RECLAMATION_NODE;
 
+CHAR*
+CovnertWCharToChar( WCHAR *Unicode, CHAR *Ascii, UINT32 AsciiBufferLength);
+
 VOID
 CompressAuthvarMemory(
     VOID

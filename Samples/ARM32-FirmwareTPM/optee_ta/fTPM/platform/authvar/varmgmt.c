@@ -197,25 +197,44 @@ IsSecureBootVar(
  *          Merge linked blocks as we find them
  */
 
+CHAR*
+CovnertWCharToChar( WCHAR *Unicode, CHAR *Ascii, UINT32 AsciiBufferLength) {
+    CHAR *returnPtr = Ascii;
+    while(Unicode != L'\0' && AsciiBufferLength > 1) {
+        if (*Unicode <= 0x7F) {
+            *Ascii = (CHAR) *Unicode;
+        } else {
+            *Ascii = '#';
+        }
+        Ascii++;
+        Unicode ++;
+        AsciiBufferLength--;
+    }
+    *Ascii = '\0';
+    return returnPtr;
+}
+
 #if (TRACE_LEVEL < TRACE_DEBUG)
 #define DumpAuthvarMemory()   (void)0
 #else
 #define DumpAuthvarMemory()   DumpAuthvarMemoryImpl()
-#endif
+
 
 VOID
 DumpAuthvarMemoryImpl(VOID)
 {
     PUEFI_VARIABLE pVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&(s_NV[NV_AUTHVAR_START]), NV_AUTHVAR_ALIGNMENT);
     PUEFI_VARIABLE pLinkVar;
+    const UINT32 maxNameLength = 50;
+    CHAR convertedName[maxNameLength];
 
     int mainCounter = 0, linkCounter;
     bool linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
 
-    DMSG("\t================================");
-    DMSG("\tStart of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
+    DMSG("================================");
+    DMSG("Start of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
     DMSG("");
-    DMSG("\t#Num:  Offset( Address ) | Allocation( Data Size) | State | Link To | <--->");
+    DMSG("#Num:                              |Offset( Address ) | Alloc( Data Size) | State | Link To | <--->");
     while (((UINT_PTR)pVar - (UINT_PTR)s_NV) < s_nextFree) {
         
         if (pVar->AllocSize == 0) {
@@ -237,6 +256,11 @@ DumpAuthvarMemoryImpl(VOID)
             linkBitArray[linkCounter] = true;
         }
 
+        const char *name = pVar->NameOffset ? 
+                        name = CovnertWCharToChar((WCHAR *)((UINT_PTR)pVar + (UINT_PTR)pVar->NameOffset),
+                                convertedName, maxNameLength)
+                        : "";
+
         UINT_PTR offset = pVar->BaseAddress - (UINT_PTR)s_NV;
         //Check if variable has been deleted
         const char *type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  "   " : "DEL");
@@ -245,14 +269,14 @@ DumpAuthvarMemoryImpl(VOID)
         const char *linkMiddle = (linkBitArray[mainCounter] || pVar->NextOffset ? "--" : "");
         const char *linkOut = (pVar->NextOffset ? "->" : "");
 
-        DMSG("\t#%3d: %#7lx(%#9lx) | A: %#7x(D: %#7x) |  %s  | Next:%-2d | %s%s%s",
-                mainCounter, offset, (UINT_PTR)pVar, pVar->AllocSize, pVar->DataSize, type,
+        DMSG("#%3d:%-30s|%#7lx(%#9lx)| A:%#6x(D:%#6x) | %s | Next:%-2d | %s%s%s",
+                mainCounter, name, offset, (UINT_PTR)pVar, pVar->AllocSize, pVar->DataSize, type,
                 linkCounter, linkIn, linkMiddle, linkOut);
         //DMSG("%s-0x%x(+0x%lx):    (#%d:%s,Link:%d)", linked, pVar->AllocSize, (UINT_PTR)pVar, mainCounter, type, linkCounter);
         pVar = (PUEFI_VARIABLE)((UINT_PTR)pVar + pVar->AllocSize);
     }
-    DMSG("\tEnd of authvar memory at 0x%lx: (Max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
-    DMSG("\t================================");
+    DMSG("End of authvar memory at 0x%lx: (Max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
+    DMSG("================================");
 
     // If we run too fast, the serial print can't keep up
     // OP-TEE uses very aggresive optimization, need to work
@@ -266,6 +290,7 @@ DumpAuthvarMemoryImpl(VOID)
     }
     DMSG("%d", collector);
 }
+#endif
 
 VOID
 UpdateOffsets(

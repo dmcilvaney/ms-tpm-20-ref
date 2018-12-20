@@ -80,6 +80,8 @@ GetVariable(
     TEE_Result status = TEE_SUCCESS;
 
     DMSG("Begin Get");
+    char name[50];
+    DMSG("\t>>>>>>>>>  %s  >>>>>>>>>", CovnertWCharToChar(GetParam->Name, name, 50));
 
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
@@ -440,9 +442,8 @@ SetVariable(
     } else {
         varName = (PWSTR)ROUNDUP((UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
                                     __alignof__(WCHAR));
-        DMSG("Varname alignment: 0x%lx rounded to 0x%lx",
-                (UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
-                (UINT_PTR)varName);
+        char name[50];
+        DMSG("\t<<<<<<<<<  %s  <<<<<<<<<", CovnertWCharToChar(varName, name, 50));
     }
     data = &SetParam->Payload[SetParam->OffsetData];
 
