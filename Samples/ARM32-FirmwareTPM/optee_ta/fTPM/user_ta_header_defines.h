@@ -46,7 +46,7 @@
 
 #define TA_FLAGS                    (TA_FLAG_SINGLE_INSTANCE | TA_FLAG_INSTANCE_KEEP_ALIVE | TA_FLAG_MULTI_SESSION)
 #define TA_STACK_SIZE               (64 * 1024)
-#define TA_DATA_SIZE                (32 * 1024)
+#define TA_DATA_SIZE                (512 * 1024)
 
 #define TA_CURRENT_TA_EXT_PROPERTIES \
     { "gp.ta.description", USER_TA_PROP_TYPE_STRING, \

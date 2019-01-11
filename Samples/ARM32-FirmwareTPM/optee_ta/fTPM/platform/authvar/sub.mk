@@ -3,8 +3,8 @@
 #cflags-y += $(WOLF_SSL_FLAGS)  $(WOLF_WARNING_SUPPRESS)
 
 srcs-y += varops.c
-cflags-varops.c-y += $(WOLF_SSL_FLAGS)
+cflags-varops.c-y += $(WOLF_SSL_FLAGS) $(AUTHVAR_FLAGS)
 srcs-y += varmgmt.c
-cflags-varmgmt.c-y += $(WOLF_SSL_FLAGS)
+cflags-varmgmt.c-y += $(WOLF_SSL_FLAGS) $(AUTHVAR_FLAGS)
 srcs-y += varauth.c
-cflags-varauth.c-y += $(WOLF_SSL_FLAGS)
+cflags-varauth.c-y += $(WOLF_SSL_FLAGS) $(AUTHVAR_FLAGS)

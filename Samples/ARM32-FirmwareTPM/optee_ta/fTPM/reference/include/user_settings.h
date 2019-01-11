@@ -87,14 +87,12 @@
     #define NO_ECC_SECP
 #endif
 
-/* Disable explicit RSA. The TPM support for RSA is dependent only on TFM */
-#define NO_RSA
 #define NO_RC4
-#define NO_ASN
-
-/* Enable debug wolf library check */
-//#define LIBRARY_COMPATIBILITY_CHECK
-
+#define XMALLOC_OVERRIDE
+#define TFM_TIMING_RESISTANT
+#define ECC_TIMING_RESISTANT
+#define WC_RSA_BLINDING
+#define HAVE_ECC_VERIFY
 #define WOLFSSL_
 
 #endif // WOLF_CRYPT_USER_SETTINGS_H

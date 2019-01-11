@@ -1,25 +1,36 @@
 WARNS ?= 1
 NOWERROR ?= 1
-CFG_TA_DEBUG ?= 1
+CFG_TA_DEBUG ?= n
 CFG_TEE_TA_LOG_LEVEL ?= 1
 
 FTPM_FLAGS = -DGCC -DUSE_WOLFCRYPT -DSIMULATION=NO -DUSE_PLATFORM_EPS -DVTPM
-FTPM_DEBUG =  -DCOMPILER_CHECKS=YES -DfTPMDebug -DRUNTIME_SIZE_CHECKS -DLIBRARY_COMPATIBILITY_CHECK
+FTPM_DEBUG =  -DCOMPILER_CHECKS=YES -DfTPMDebug -DRUNTIME_SIZE_CHECKS -DLIBRARY_COMPATIBILITY_CHECK -DFAIL_TRACE
 FTPM_RELEASE = -DCOMPILER_CHECKS=NO -DRUNTIME_SIZE_CHECKS=NO -DLIBRARY_COMPATIBILITY_CHECK=NO
+FTPM_WARNING_SUPPRESS = -Wno-cast-align -Wno-switch-default -Wno-suggest-attribute=noreturn -Wno-missing-braces -Wno-sign-compare
 
-WOLF_INCLUDES = -include ./lib/tpm/tpm_symlink/TPMCmd/tpm/include/wolf/user_settings.h
-WOLF_SSL_FLAGS = $(WOLF_INCLUDES) -DSINGLE_THREADED -DNO_FILESYSTEM -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPENSSL_EXTRA -DWOLFSSL_USER_SETTINGS -DTIME_OVERRIDES -DSTRING_USER -DCTYPE_USER -DHAVE_PKCS7 -DHAVE_AES_KEYWRAP -DHAVE_X963_KDF -DNO_WRITEV -DNO_ASN_TIME -DHAVE_TIME_T_TYPE -DWOLFCRYPT_ONLY
+WOLF_SSL_FLAGS = -DSINGLE_THREADED -DNO_FILESYSTEM -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DOPENSSL_EXTRA -DWOLFSSL_USER_SETTINGS -DTIME_OVERRIDES -DSTRING_USER -DCTYPE_USER -DHAVE_PKCS7 -DHAVE_AES_KEYWRAP -DHAVE_X963_KDF -DNO_WRITEV -DNO_ASN_TIME -DHAVE_TIME_T_TYPE -DWOLFCRYPT_ONLY
+WOLF_WARNING_SUPPRESS = -Wno-unused-function -Wno-switch-default
 
-cflags-y += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector -mno-unaligned-access
+#
+# The fTPM needs to overwrite some of the header files used in the reference implementation. The search order GCC
+# uses is dependent on the order the '-I/include/path' arguments are passed in. This is depended on the optee_os build
+# system which makes it brittle. Force including these files here will make sure the correct files are used first.
+#
+FTPM_INCLUDES = -include ./reference/include/VendorString.h -include ./reference/include/Implementation.h
+WOLF_INCLUDES = -include ./reference/include/user_settings.h
+INCLUDE_OVERWRITES = $(FTPM_INCLUDES) $(WOLF_INCLUDES)
+
+CPPFLAGS += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector -mno-unaligned-access
+cflags-y += $(INCLUDE_OVERWRITES)
 
 ifeq ($(CFG_TA_DEBUG),y)
-cflags-y += -DfTPMDebug=1
-cflags-y += -DDBG=1
-cflags-y += -O0
-cflags-y += -DDEBUG
+CPPFLAGS += -DfTPMDebug=1
+CPPFLAGS += -DDBG=1
+CPPFLAGS += -O0
+CPPFLAGS += -DDEBUG
 else
-cflags-y += -Os
-cflags-y += -DNDEBUG
+CPPFLAGS += -Os
+CPPFLAGS += -DNDEBUG
 endif
 
 #

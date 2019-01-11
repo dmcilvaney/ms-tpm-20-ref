@@ -1,17 +1,3 @@
-#
-# The fTPM needs to overwrite some of the header files used in the reference implementation. The search order GCC
-# uses is dependent on the order the '-I/include/path' arguments are passed in. This is depended on the optee_os build
-# system which makes it brittle. Force including these files here will make sure the correct files are used first.
-#
-
-FTPM_INCLUDES = -include ./reference/include/VendorString.h -include ./reference/include/Implementation.h
-
-#
-# The TPM causes a few warnings when compiled with GCC which are not critical.
-#
-
-FTPM_WARNING_SUPPRESS = -Wno-cast-align -Wno-switch-default -Wno-suggest-attribute=noreturn -Wno-missing-braces -Wno-sign-compare
-
 ifeq ($(CFG_TA_DEBUG),y)
 FTPM_FLAGS += $(FTPM_DEBUG)
 else
@@ -249,4 +235,4 @@ tpm_files = \
  tpm_symlink/TPMCmd/tpm/src/support/TpmSizeChecks.c \
 
 srcs-y = $(foreach tpmfile, $(tpm_files), $(tpmfile) )
-$(foreach tpmfile, $(tpm_files), $(eval  cflags-$(tpmfile)-y += $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(FTPM_INCLUDES) $(FTPM_WARNING_SUPPRESS)))
+$(foreach tpmfile, $(tpm_files), $(eval  cflags-$(tpmfile)-y += $(FTPM_FLAGS) $(WOLF_SSL_FLAGS) $(INCLUDE_OVERWRITES) $(FTPM_WARNING_SUPPRESS)))

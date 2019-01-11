@@ -108,4 +108,11 @@ extern int wolfRand(unsigned char* output, unsigned int sz);
 #undef  CUSTOM_RAND_GENERATE_BLOCK
 #define CUSTOM_RAND_GENERATE_BLOCK  wolfRand
 
+//#ifdef XMALLOC_OVERRIDE
+extern void *wolfMalloc(size_t n);
+extern void *wolfRealloc(void *p, size_t n);
+#define XMALLOC(sz, heap, type)     wolfMalloc(sz)
+#define XREALLOC(p, sz, heap, type) wolfRealloc(p, sz)
+#define XFREE(p, heap, type)        TEE_Free(p)
+
 #endif

@@ -1,12 +1,4 @@
 #
-# Wolfcrypt has multiple unused functions, unfortunately the OPTEE build system can only turn off compiler flags for
-# files in the same directory as the sub.mk file. It is not possible to place sub.mk files in the git submodules without
-# creating a new fork of each submodule repo. To avoid spurious warnings these warnings are disabled here globally.
-#
-
-WOLF_WARNING_SUPPRESS = -Wno-unused-function -Wno-switch-default
-
-#
 # For the purposes of this command the current working directory is the makefile root (/fTPM) folder,
 # but the symlink will be created relative to THIS directory so the source requires an extra '../../'.
 #
@@ -51,4 +43,4 @@ wolf_crypt_files = \
  wolf_symlink/wolfcrypt/src/wolfmath.c \
 
 srcs-y = $(foreach wcfile, $(wolf_crypt_files), $(wcfile) )
-$(foreach wcfile, $(wolf_crypt_files), $(eval  cflags-$(wcfile)-y += -DFOOBAR $(WOLF_SSL_FLAGS) $(WOLF_WARNING_SUPPRESS)))
+$(foreach wcfile, $(wolf_crypt_files), $(eval  cflags-$(wcfile)-y += $(WOLF_SSL_FLAGS) $(INCLUDE_OVERWRITES) $(WOLF_WARNING_SUPPRESS)))
