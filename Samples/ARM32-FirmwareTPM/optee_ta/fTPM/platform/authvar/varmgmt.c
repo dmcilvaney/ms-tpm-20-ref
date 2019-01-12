@@ -498,8 +498,8 @@ ReclaimNode(
         newNodeSize = Node->DataOffset + Node->DataSize;
     }
 
-    wastedSpace = pVar->AllocSize - newVariableSize;
-    DMSG("Total size is 0x%x, Wasted space is 0x%x", newVariableSize, wastedSpace);
+    wastedSpace = Node->AllocSize - newNodeSize;
+    FMSG("Total size is 0x%x, Wasted space is 0x%x", newNodeSize, wastedSpace);
 
     // We need to remain alligned, don't reclaim gaps smaller
     // than our alignment.
@@ -741,12 +741,12 @@ CompressAuthvarMemory(
 
 --*/
 {
-    FMSG("Optimizing memory, currently 0x%lx free", s_nvLimit - s_nextFree);
+    IMSG("Optimizing authvar memory, currently 0x%lx free", s_nvLimit - s_nextFree);
     if(!AuthVarInitStorage(NV_AUTHVAR_START, TRUE)) {
         EMSG("Failed to re-initialize NV memory");
         TEE_Panic(TEE_ERROR_BAD_STATE);
     }
-    FMSG("Optimizing done, now 0x%lx free", s_nvLimit - s_nextFree);
+    IMSG("Optimizing done, now 0x%lx free", s_nvLimit - s_nextFree);
 }
 
 //
@@ -784,8 +784,6 @@ SearchList(
     --*/
 {
     UINT32 i;
-
-    FMSG("Searching lists for variable");
 
     // Validate parameters
     if (!(UnicodeName) || !(VendorGuid) || !(Var) || !(VarType))
@@ -1090,6 +1088,7 @@ RetrieveVariable(
 
     DMSG("Getting data from variable at 0x%lx", (UINT_PTR)Var);
 
+    requiredSize = 0;
     // Detect integer overflow
     if (((UINT32)ResultBuf + ResultBufLen) < (UINT32)ResultBuf)
     {
@@ -1099,7 +1098,6 @@ RetrieveVariable(
 
     //Calculate the total size required
     currentNode = Var;
-    requiredSize = 0;
     do {
         FMSG("Adding size 0x%x", currentNode->DataSize);
         requiredSize += currentNode->DataSize;
@@ -1160,7 +1158,7 @@ Cleanup:
 }
 
 TEE_Result
-DeleteNode(
+DeleteNodes(
     PUEFI_VARIABLE  Tail
 )
 /*++
@@ -1364,6 +1362,7 @@ AppendVariable(
             newNode->ExtAttribSize = 0;
             newNode->ExtAttribOffset = 0;
             newNode->DataSize = DataSize;
+
             apndData = (PBYTE)(newNode->BaseAddress + sizeof(UEFI_VARIABLE));
             newNode->DataOffset = (UINT_PTR)apndData - newNode->BaseAddress;
 
@@ -1604,7 +1603,7 @@ ReplaceVariable(
             // If our next offset != 0 on what should be the last data entry, it's
             // because we 'replaced' the variable data with a smaller data size.
             // Clean up the excess appended data entries now. If there is a nextOffset
-            // Var will already point to the next element in the list.
+            // currentNode will already point to the next element in the list.
             FMSG("Clearing NextOffset from 0x%p", (PBYTE)lastUsedNode);
             status = DeleteNodes(currentNode);
             lastUsedNode->NextOffset = 0;

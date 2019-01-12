@@ -107,12 +107,12 @@ AuthvarCommitChanges(
 
 --*/
 {
-    DMSG("Authvar commit");
+    DMSG("Commiting changes to NV");
 #ifdef AUTHVAR_HIGH_PERFORMANCE_MODE
     static INT16 counter = 0;
 
     counter++;
-    DMSG("Counter is %d, in runtime? %d", counter, fTPMIsRuntime);
+    IMSG("Counter is %d, in runtime? %d", counter, fTPMIsRuntime);
 
     if(counter != AUTHVAR_WRITEBACK_DELAY && !fTPMIsRuntime) {
         DMSG("Skipping writeback to improve performance. (%d of %d skipped)",
@@ -161,14 +161,14 @@ GetVariable(
     UNICODE_STRING unicodeName;
     TEE_Result status = TEE_SUCCESS;
 
-    DMSG("Begin Get");
+    DMSG("GetVariable");
     char name[50];
     IMSG("\t>>>>>>>>>  %s  >>>>>>>>>", CovnertWCharToChar(GetParam->Name, name, 50));
 
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
     {
-        EMSG("Get variable bad parameters");
+        EMSG("Get variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -176,7 +176,7 @@ GetVariable(
     // Request validation
     if (!(GetResultSize) || (GetParam->Size != sizeof(VARIABLE_GET_PARAM)))
     {
-        EMSG("Get variable bad parameters (size)");
+        EMSG("Get variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -184,7 +184,7 @@ GetVariable(
     // Size of result buffer
     if (*GetResultSize < sizeof(VARIABLE_GET_RESULT))
     {
-        DMSG("Get variable short buffer");
+        EMSG("Get variable error: Short buffer");
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
@@ -192,7 +192,7 @@ GetVariable(
     // Validation of var name size
     if (((GetParam->NameSize) == 0) || (GetParam->NameSize % sizeof(WCHAR)))
     {
-        DMSG("Bad name size %d, or not multiple of %d", (uint32_t)GetParam->NameSize, sizeof(WCHAR));
+        EMSG("Get variable error: Null or unaligned name");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -201,7 +201,7 @@ GetVariable(
     if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) ||
         (GetParamSize < (sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
-        DMSG("Overflow on name string length");
+        EMSG("Get variable error: Overflow on name string length");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -218,7 +218,7 @@ GetVariable(
 
     if(unicodeName.MaximumLength > GetParam->NameSize)
     {
-        DMSG("Unicode string is not null-terminated");
+        EMSG("Get variable error: Name not null terminated");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -231,11 +231,9 @@ GetVariable(
     {
         // No.
         status = TEE_ERROR_ITEM_NOT_FOUND;
-        DMSG("Get: Variable not found");
+        EMSG("Get variable error: Name not found");
         goto Cleanup;
     }
-
-    DMSG("Retrieving variable");
 
     // Yes, go get it.
     status = RetrieveVariable(varPtr, GetResult, *GetResultSize, GetResultSize);
@@ -244,10 +242,12 @@ GetVariable(
     } else {
         DMSG("Retrieved up to 0x%x bytes into 0x%lx", *GetResultSize, (UINT_PTR)GetResult);
     }
-    
+
 Cleanup:
     if(status == TEE_SUCCESS) {
         PrintBuffer(GetResult->Data, GetResult->DataSize);
+    } else {
+        EMSG("Get failed with status: 0x%x", status);
     }
     return status;
 }
@@ -288,13 +288,13 @@ GetNextVariableName(
     UINT32 size, i;
     TEE_Result status;
     VARTYPE varType;
-    USHORT varNameLen;
 
+    DMSG("GetNextVariable");
 
     // Validate parameters
     if (!(GetNextParam) || !(GetNextResult) || (GetNextParamSize < sizeof(VARIABLE_GET_NEXT_PARAM)))
     {
-        EMSG("Get next variable bad parameters");
+        EMSG("Get next variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -302,7 +302,7 @@ GetNextVariableName(
     // Request validation
     if (!(GetNextResultSize) || (GetNextParam->Size != sizeof(VARIABLE_GET_NEXT_PARAM)))
     {
-        EMSG("Get next variable bad parameters");
+        EMSG("Get next variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -310,6 +310,7 @@ GetNextVariableName(
     // Size of result buffer
     if (*GetNextResultSize < sizeof(VARIABLE_GET_NEXT_PARAM))
     {
+        EMSG("Get next variable error: Short buffer");
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
@@ -321,28 +322,23 @@ GetNextVariableName(
     // Is this the first request?
     if (GetNextParam->NameSize == 0)
     {
-        DMSG("Frist run");
         // Yes, return first variable that can be found in any list
         for (i = 0; i < ARRAY_SIZE(VarInfo); i++)
         {
-            DMSG("Checking array %d", i);
             if (!IsListEmpty(&VarInfo[i].Head))
             {
-                DMSG("Found a head!");
                 // Pick up first variable
                 nextVar = (PUEFI_VARIABLE)VarInfo[i].Head.Flink;
                 break;
-            } else {
-                DMSG("No head");
             }
         }
     }
     else
     {
-        DMSG("Next run");
         // Validation on name length (we already know it's non-zero)
         if (GetNextParam->NameSize % sizeof(WCHAR))
         {
+            EMSG("Get next variable error: unaligned name");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
@@ -351,12 +347,12 @@ GetNextVariableName(
         if (((GetNextParam->NameSize + sizeof(VARIABLE_GET_NEXT_PARAM)) < GetNextParam->NameSize) ||
             (GetNextParamSize < (sizeof(VARIABLE_GET_PARAM) + GetNextParam->NameSize)))
         {
-            EMSG("Get next variable bad parameters");
+            EMSG("Get next variable error: Overflow on name string length");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
 
-        // Init for variable search
+        // Retreive (name, guid)
         varName = (PWSTR)(GetNextParam->Name);
         vendorGuid = GetNextParam->VendorGuid;
 
@@ -368,18 +364,19 @@ GetNextVariableName(
 
         if(unicodeName.MaximumLength > GetNextParam->NameSize)
         {
-            DMSG("Unicode string is not null-terminated");
+            EMSG("Get next variable error: Name not null terminated");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
 
-        // Get the next variable in the list
+        // Find the last variable in the list
         SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
 
         // Did we find it?
         if (varPtr == NULL)
         {
             // No.
+            EMSG("Get next variable error: Name not found");
             status = TEE_ERROR_ITEM_NOT_FOUND;
             goto Cleanup;
         }
@@ -406,7 +403,7 @@ GetNextVariableName(
     // Are we done?
     if (nextVar == NULL)
     {
-        DMSG("Couldn't find another, done");
+        DMSG("Get next variable done, no more variables left");
         status = TEE_ERROR_ITEM_NOT_FOUND;
         goto Cleanup;
     }
@@ -422,7 +419,7 @@ GetNextVariableName(
 
     if (size > *GetNextResultSize)
     {
-        DMSG("Short buffer, have 0x%x bytes", *GetNextResultSize);
+        DMSG("Get next variable error: Short buffer, need 0x%x bytes", *GetNextResultSize);
         *GetNextResultSize = size;
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
@@ -439,12 +436,12 @@ GetNextVariableName(
     *GetNextResultSize = sizeof(VARIABLE_GET_NEXT_RESULT) + nextVar->NameSize;
     GetNextResult->Size = *GetNextResultSize;
 
-    //DMSG("Return buffer:");
-    //DHEXDUMP(GetNextResult, *GetNextResultSize);
-
     status = TEE_SUCCESS;
 
 Cleanup:
+    if(status!= TEE_SUCCESS) {
+        EMSG("Set failed with 0x%x", status);
+    }
     return status;
 }
 
@@ -468,15 +465,14 @@ SetVariable(
     ATTRIBUTES attrib;
     BOOLEAN duplicateFound = FALSE, isDeleteOperation = FALSE;
 
-    DMSG("set");
+    DMSG("SetVariable");
 
     // Validate parameters
     if (!(SetParam)
         || (SetParamSize < sizeof(VARIABLE_SET_PARAM))
         || (SetParam->Size != sizeof(VARIABLE_SET_PARAM)))
     {
-        EMSG("Set variable bad parameters");
-        EMSG("sp: %x, sps : %x, sp->s : %x", SetParam, SetParamSize, SetParam->Size);
+        EMSG("Set variable error: Bad parameters");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -502,34 +498,32 @@ SetVariable(
         || (SetParam->OffsetName + varNameSize > offsetLimit)
         || (SetParam->OffsetData + dataSize > offsetLimit))
     {
-        EMSG("Set variable bad parameters (sizes/offsets)");
+        EMSG("Set variable error: Bad parameters (sizes/offsets)");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // We expect the name of the variable before the data (if provided)
     if ((SetParam->DataSize) && (SetParam->OffsetName > SetParam->OffsetData))
     {
-        EMSG("Set variable bad parameters (name/size)");
+        EMSG("Set variable error: Bad parameters (name/size)");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // Alignment check on variable name offset
     if (SetParam->OffsetName % sizeof(WCHAR))
     {
-        EMSG("Set variable bad parameters (align)");
+        EMSG("Set variable error: Unaligned name");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     // Now pickup parameter fields
     vendorGuid = SetParam->VendorGuid;
-    DMSG("vendorGuid addr: 0x%lx",(UINT_PTR)&vendorGuid);
-    DHEXDUMP(&vendorGuid,sizeof(vendorGuid));
 
     attrib.Flags = SetParam->Attributes.Flags;
     if ((UINT_PTR)&SetParam->Payload[SetParam->OffsetName] != 
         ROUNDUP((UINT_PTR)&SetParam->Payload[SetParam->OffsetName], __alignof__(WCHAR)))
     {
-        EMSG("Received unaligned data");
+        EMSG("Set variable error: Received unaligned data");
         varName = NULL;
         TEE_Panic(TEE_ERROR_BAD_PARAMETERS);
     } else {
@@ -547,7 +541,7 @@ SetVariable(
 
     if(unicodeName.MaximumLength > varNameSize)
     {
-        DMSG("Unicode string is not null-terminated");
+        DMSG("Set variable error: Name not null terminated");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -555,19 +549,19 @@ SetVariable(
     // Attribute validation
     if ((attrib.Flags & (~EFI_KNOWN_ATTRIBUTES)) != 0)
     {
-        EMSG("Set variable bad parameters0");
+        EMSG("Set variable error: Unknown attributes");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite && attrib.TimeBasedAuth)
     {
-        EMSG("Set variable bad parameters1");
+        EMSG("Set variable error: Inconsistent authentication attributes");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     if (attrib.AuthWrite || attrib.HwErrorRec)
     {
-        EMSG("Set variable NOT IMPLEMENTED");
+        EMSG("Set variable error: HwErrorRec not implemented");
         return TEE_ERROR_NOT_IMPLEMENTED;
     }
 
@@ -577,26 +571,22 @@ SetVariable(
     // Does the variable exist already?
     SearchList(&unicodeName, &vendorGuid, &varPtr, &varType);
 
-    DMSG("varPtr: 0x%lx, flags: 0x%x", (UINT_PTR)varPtr, attrib.Flags);
-
     // Set() on a variable causes deletion when:
     //   1. Setting a data variable with no access attributes
     //   2. dataSize is zero unless write attribute(s) set
     isDeleteOperation = (!(attrib.Flags & EFI_ACCESS_ATTRIBUTES)) ||
                          ((dataSize == 0) && !(attrib.Flags & EFI_WRITE_ATTRIBUTES));
-    DMSG("Delete operation? %d, 0x%x (ds: 0x%x, AA:0x%lx && WA:0x%lx)", isDeleteOperation,attrib.Flags, dataSize, EFI_ACCESS_ATTRIBUTES, EFI_WRITE_ATTRIBUTES);
 
     // Yes
     if (varPtr != NULL)
     {
         DMSG("Found an existing variable");
-        DMSG("attrib flags: 0x%x, varPtr flags: 0x%x, EVAW flag: 0x%lx", attrib.Flags, varPtr->Attributes.Flags, EFI_VARIABLE_APPEND_WRITE);
         // Existing attributes may only differ in EFI_VARIABLE_APPEND_WRITE unless we are deleting
         // the variable.
         if (!(isDeleteOperation) &&
             (((attrib.Flags) ^ (varPtr->Attributes.Flags)) & ~(EFI_VARIABLE_APPEND_WRITE)))
         {
-            EMSG("Set variable bad parameters");
+            EMSG("Set variable error: Inconsistent Attributes");
             return TEE_ERROR_BAD_PARAMETERS;
         }
 
@@ -612,15 +602,14 @@ SetVariable(
             // ..only non-volatile variables with runtime access can be set
             !((varPtr->Attributes.RuntimeAccess) & (varPtr->Attributes.NonVolatile)))
         {
-            DMSG("set");
+            EMSG("Set variable error: Can only set runtime access variables now");
             return TEE_ERROR_ACCESS_DENIED;
         }
 
         // If this is an existing authenticated variable, perform security check
         if (varPtr->Attributes.TimeBasedAuth)
         {
-            DMSG("AUTHAUTHAUTH");
-            DMSG("Set: TimeBasedAuth");
+            DMSG("Time based auth");
             status = AuthenticateSetVariable(
                 &unicodeName,
                 &vendorGuid,
@@ -635,17 +624,18 @@ SetVariable(
 
             if (status != TEE_SUCCESS)
             {
-                DMSG("set failed: %x", status);
+                EMSG("Set variable error: Authentication failed with status: %x", status);
                 goto Cleanup;
             }
 
+            //TODO: Fix this?
             //data = content;
             //dataSize = contentSize;
         }
 
         if (isDeleteOperation)
         {
-            DMSG("set delete");
+            DMSG("Deleting variable");
             RemoveEntryList((PLIST_ENTRY) varPtr);
             status = DeleteNodes(varPtr);
             goto Cleanup;
@@ -654,7 +644,7 @@ SetVariable(
         // Is this an append operation?
         if (attrib.AppendWrite)
         {
-            DMSG("set Append");
+            DMSG("Appending variable");
             status = AppendVariable(
                 varPtr,
                 attrib,
@@ -672,7 +662,7 @@ SetVariable(
         if ((!(fTPMIsRuntime) && (attrib.BootService)) ||
             ((fTPMIsRuntime) && (attrib.RuntimeAccess) && (attrib.NonVolatile)))
         {
-            DMSG("Replace");
+            DMSG("Replacing variable");
             status = ReplaceVariable(
                 varPtr,
                 attrib,
@@ -683,9 +673,8 @@ SetVariable(
         }
 
         // If this case is not covered then one or more parameters are invalid.
-        EMSG("Set variable bad parameters");
+        EMSG("Set variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
-        DMSG("set");
         goto Cleanup;
     }
 
@@ -693,7 +682,7 @@ SetVariable(
     if ((dataSize == 0) && isDeleteOperation)
     {
         status = TEE_ERROR_ITEM_NOT_FOUND;
-        DMSG("Attempted deletion of non-existing variable.");
+        IMSG("Attempted deletion of non-existing variable.");
         goto Cleanup;
     }
 
@@ -701,11 +690,9 @@ SetVariable(
     // invalid. However, caller is responsible for following BS-implies-RT rule.
     if ((attrib.NonVolatile) && (attrib.BootService))
     {
-        DMSG("set");
+        DMSG("Creating non-volatile variable");
         if (attrib.TimeBasedAuth)
         {
-            DMSG("AUTHAUTHAUTH2");
-
             status = AuthenticateSetVariable(
                 &unicodeName,
                 &vendorGuid,
@@ -720,11 +707,11 @@ SetVariable(
 
             if (status != TEE_SUCCESS)
             {
-                DMSG("setauthfailed");
+                EMSG("Set variable error: Authentication failed with status: %x", status);
                 goto Cleanup;
             }
-            DMSG("AUTHAUTHAUTH2success");
 
+            //TODO: Fix this?
             //data = content;
             //dataSize = contentSize;
         }
@@ -736,20 +723,20 @@ SetVariable(
             &extAttrib,
             dataSize,
             data);
-        DMSG("setsuccess?:%x", status);
         goto Cleanup;
     }
 
     // Cannot create new volatile variables at runtime
     if (!(attrib.NonVolatile) && !(fTPMIsRuntime) && (attrib.BootService))
     {
-        DMSG("set");
+        DMSG("Creating volatile variable");
         // REVISIT: Implement volatile authenticated variables only if needed.
         // We store them in NV and mark them so they are deleted on init.
         if (attrib.TimeBasedAuth)
         {
-            EMSG("Set variable NO AUTH");
+            EMSG("Set variable error: Volatile time auth not implemented!");
             status = TEE_ERROR_NOT_IMPLEMENTED;
+            TEE_Panic(TEE_ERROR_NOT_IMPLEMENTED);
             goto Cleanup;
         }
 
@@ -760,30 +747,29 @@ SetVariable(
             &extAttrib,
             dataSize,
             data);
-        DMSG("set");
         goto Cleanup;
     }
-    EMSG("Set variable bad parameters");
+    EMSG("Set variable error: Bad parameters");
     // If this case is not covered then one or more parameters are invalid.
     status = TEE_ERROR_BAD_PARAMETERS;
     goto Cleanup;
 
 Cleanup:
-    DMSG("Clean up");
     // Need to clean up if we've updated an existing authenticated variable
     if (duplicateFound)
     {
-        DMSG("Cleaning up duplicate");
+        IMSG("Cleaning up duplicate authenticated variable content");
         TEE_Free(content);
     }
+
     AuthvarCommitChanges();
-    DMSG("set done");
+
     if(status == TEE_SUCCESS) {
         PrintBuffer(&SetParam->Payload[SetParam->OffsetData], dataSize);
     } else {
-        EMSG("Set failed with 0x%x", status);
+        EMSG("Set failed with status: 0x%x", status);
     }
-    DMSG("Data:0x%lx, Size:0x%x", (UINT_PTR)data, dataSize);
+
     return status;
 }
 
@@ -816,6 +802,7 @@ QueryVariableInfo(
     // Validate parameters
     if (!(QueryParam) || !(QueryResult) || (QueryParamSize  < sizeof(VARIABLE_QUERY_PARAM)))
     {
+        EMSG("Query variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -823,6 +810,7 @@ QueryVariableInfo(
     // Request validation
     if (!(QueryResultSize) || (QueryParam->Size != sizeof(VARIABLE_QUERY_PARAM)))
     {
+        EMSG("Query variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -830,6 +818,7 @@ QueryVariableInfo(
     // Size of result buffer
     if (*QueryResultSize < sizeof(VARIABLE_QUERY_RESULT))
     {
+        EMSG("Query variable error: Bad parameters");
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }
@@ -841,6 +830,7 @@ QueryVariableInfo(
     if ((attrib.Flags & ~(EFI_KNOWN_ATTRIBUTES)) || ((fTPMIsRuntime) && (attrib.BootService))
         || (attrib.AuthWrite) || !(attrib.NonVolatile) || (attrib.HwErrorRec))
     {
+        EMSG("Query variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
@@ -857,5 +847,9 @@ QueryVariableInfo(
     status = TEE_SUCCESS;
 
 Cleanup:
+    if(status != TEE_SUCCESS) {
+        EMSG("Set failed with status: 0x%x", status);
+    }
+
     return status;
 }
