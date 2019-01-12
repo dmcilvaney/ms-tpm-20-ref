@@ -229,6 +229,9 @@ DumpAuthvarMemoryImpl(VOID)
     UINT32 mainCounter = 0, linkCounter;
     BOOL isLinkedTo[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
 
+    DMSG("pVar @ 0x%lx", (UINT_PTR)pVar);
+    DMSG("0x%lx, 0x%lx", ((UINT_PTR)pVar - (UINT_PTR)s_NV), s_nextFree);
+
     FMSG("================================");
     FMSG("Start of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
     FMSG("");
@@ -261,11 +264,20 @@ DumpAuthvarMemoryImpl(VOID)
 
         UINT_PTR offset = pVar->BaseAddress - (UINT_PTR)s_NV;
         //Check if variable has been deleted
-        const PCCH type = (memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)) ?  "   " : "DEL");
+        PCCH type;
+        if (!memcmp(&(pVar->VendorGuid), &GUID_NULL, sizeof(GUID)))
+        {
+            type = "DEL ";
+        } else if (pVar->Attributes.AuthWrite || pVar->Attributes.TimeBasedAuth ) {
+            type = "AUTH";
+        } else {
+            type = "    ";
+        }
+
         //Check if its a link variable
-        const PCCH linkIn = (isLinkedTo[mainCounter] ? "<-" : "");
-        const PCCH linkMiddle = (isLinkedTo[mainCounter] || pVar->NextOffset ? "--" : "");
-        const PCCH linkOut = (pVar->NextOffset ? "->" : "");
+        PCCH linkIn = (isLinkedTo[mainCounter] ? "<-" : "");
+        PCCH linkMiddle = (isLinkedTo[mainCounter] || pVar->NextOffset ? "--" : "");
+        PCCH linkOut = (pVar->NextOffset ? "->" : "");
 
         FMSG("#%3d:%-30s|%#7lx(%#9lx)| A:%#6x(D:%#6x) | %s | Next:%-2d | %s%s%s",
                 mainCounter, name, offset, (UINT_PTR)pVar, pVar->AllocSize, pVar->DataSize, type,
@@ -275,18 +287,6 @@ DumpAuthvarMemoryImpl(VOID)
     }
     FMSG("End of authvar memory at 0x%lx: (Max:0x%lx)", (UINT_PTR)&(s_NV[s_nextFree]), (UINT_PTR)&(s_NV[s_nvLimit]));
     FMSG("================================");
-
-    // If we run too fast, the serial print can't keep up
-    // OP-TEE uses very aggresive optimization, need to work
-    // to trick it.
-    volatile uint32_t counter0, counter1;
-    static volatile uint32_t collector = 1;
-    for(counter0 = 1; counter0 < 500; counter0++) {
-        for (counter1 = 1; counter1 < 100000; counter1++) {
-            collector = (collector + 1) * mainCounter;
-        }
-    }
-    FMSG("%d", collector);
 }
 #endif
 

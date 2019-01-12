@@ -457,8 +457,6 @@ static TEE_Result fTPM_AuthVar_GetNext(
     uint32_t    ExpectedTypes;
     TEE_Result  Status;
 
-    DMSG("AV cmd");
-
     ExpectedTypes = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,
         TEE_PARAM_TYPE_MEMREF_OUTPUT,

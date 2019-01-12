@@ -42,6 +42,48 @@ const GUID EfiSecurityDatabaseGUID = EFI_IMAGE_SECURITY_DATABASE_GUID;
 //
 // AuthVar functions
 //
+VOID PrintBuffer(BYTE *buf, uint32_t size);
+VOID PrintBuffer(BYTE *buf, uint32_t size) {
+    char string[1000];
+    char *ptr = string;
+    uint32_t inputNum = 0;
+    uint32_t maxLines = 10;
+
+    while(inputNum < size) {
+        uint8_t highByte = buf[inputNum] >> 0x4;
+        uint8_t lowByte = buf[inputNum] & 0x0F;
+        *(ptr++) = highByte < 0xA ? '0' + highByte : 'A' + (highByte - 0xA);
+        *(ptr++) = lowByte < 0xA ? '0' + lowByte : 'A' + (lowByte - 0xA);
+
+        inputNum++;
+        
+        if ((inputNum) % 32 == 0) {
+            *(ptr++) = '\0';
+            IMSG("%s", string);
+            ptr = string;
+            maxLines--;
+        } else if ((inputNum) % 8 == 0) {
+            *(ptr++) = ' ';
+            *(ptr++) = ' ';
+            *(ptr++) = ' ';
+            *(ptr++) = ' ';
+            *(ptr++) = ' ';
+        } else {
+            *(ptr++) = ' ';
+        }
+
+        if (!maxLines) {
+            *(ptr++) = '.';
+            *(ptr++) = '.';
+            *(ptr++) = '.';
+            break;
+        }
+    }
+    *ptr = '\0';
+    if(string[0] != '\0') {
+        IMSG("%s", string);
+    }
+}
 
 BOOL
 AuthvarCommitChanges(
@@ -121,7 +163,7 @@ GetVariable(
 
     DMSG("Begin Get");
     char name[50];
-    DMSG("\t>>>>>>>>>  %s  >>>>>>>>>", CovnertWCharToChar(GetParam->Name, name, 50));
+    IMSG("\t>>>>>>>>>  %s  >>>>>>>>>", CovnertWCharToChar(GetParam->Name, name, 50));
 
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
@@ -204,7 +246,9 @@ GetVariable(
     }
     
 Cleanup:
-    DMSG("Done get");
+    if(status == TEE_SUCCESS) {
+        PrintBuffer(GetResult->Data, GetResult->DataSize);
+    }
     return status;
 }
 
@@ -492,7 +536,7 @@ SetVariable(
         varName = (PWSTR)ROUNDUP((UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
                                     __alignof__(WCHAR));
         char name[50];
-        DMSG("\t<<<<<<<<<  %s  <<<<<<<<<", CovnertWCharToChar(varName, name, 50));
+        IMSG("\t<<<<<<<<<  %s  <<<<<<<<<", CovnertWCharToChar(varName, name, 50));
     }
     data = &SetParam->Payload[SetParam->OffsetData];
 
@@ -734,6 +778,11 @@ Cleanup:
     }
     AuthvarCommitChanges();
     DMSG("set done");
+    if(status == TEE_SUCCESS) {
+        PrintBuffer(&SetParam->Payload[SetParam->OffsetData], dataSize);
+    } else {
+        EMSG("Set failed with 0x%x", status);
+    }
     DMSG("Data:0x%lx, Size:0x%x", (UINT_PTR)data, dataSize);
     return status;
 }
