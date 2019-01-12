@@ -72,7 +72,7 @@ BOOL                 s_powerLost;
 uint32_t             lastEntropy;
 
 // For NVMem.c
-unsigned char        s_NV[NV_TOTAL_MEMORY_SIZE];
+unsigned char s_NV[NV_TOTAL_MEMORY_SIZE] __attribute__ ((aligned (NV_AUTHVAR_ALIGNMENT)));
 BOOL                 s_NvIsAvailable;
 
 // From PPPlat.c

@@ -57,6 +57,10 @@
 
 jmp_buf              s_jumpBuffer;
 
+extern UINT32    s_failFunction;
+extern UINT32    s_failLine;
+extern UINT32    s_failCode; 
+
 //** Functions
 
 //***_plat__RunCommand()
@@ -86,5 +90,9 @@ _plat__Fail(
     void
     )
 {
+    EMSG("TPM is in failure state! (0x%x)", s_failCode);
+#if FAIL_TRACE
+    EMSG("%s:%d", s_failFunction, s_failLine);
+#endif
     TEE_Panic(TEE_ERROR_BAD_STATE);
 }
