@@ -707,16 +707,17 @@ AuthVarInitStorage(
             }
         }
 
-        // Attempt to reclaim unused memory from the current variable,
-        // then compute pointer to next var. If the current variable was
-        // deleted then the next variable will have been moved to the
-        // same location.
-        if (!ReclaimNode(currentNode)) {
+        // Cleanup is triggered when memory becomes full, attempt to reclaim
+        // unused memory from the current node, then compute pointer to 
+        // next node. If the current node WAS deleted then the next node
+        // will have been moved to the same location and no update is needed.
+        if ((!ReInitialize) || (!ReclaimNode(currentNode))) {
             // Variable was not deleted, move to the next variable
             currentNode = (PUEFI_VARIABLE)(currentNode->BaseAddress + currentNode->AllocSize);
+        } else {
+            // Memory has been changed, print it out again.
+            DumpAuthvarMemory();
         }
-
-        DumpAuthvarMemory();
     } while (((UINT_PTR)currentNode - (UINT_PTR)s_NV) < s_nextFree);
 
     authVarState.NvEnd = s_nextFree;
