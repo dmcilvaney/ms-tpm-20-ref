@@ -156,8 +156,8 @@ GetVariable(
     }
 
     // Guard against overflow with name string
-    if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) &&
-        ((UINT_PTR)GetParam < (UINT_PTR)(sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
+    if (((GetParam->NameSize + sizeof(VARIABLE_GET_PARAM)) < GetParam->NameSize) ||
+        (GetParamSize < (sizeof(VARIABLE_GET_PARAM) + GetParam->NameSize)))
     {
         DMSG("Overflow on name string length");
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -270,20 +270,12 @@ GetNextVariableName(
         goto Cleanup;
     }
 
-    // Init local name string
-    memset(&unicodeName, 0, sizeof(unicodeName));
-
-    // Pickup (name,guid)
-    varNameLen = GetNextParam->NameSize;
-    vendorGuid = GetNextParam->VendorGuid;
 
     // Init for search
     nextVar = NULL;
 
-    DMSG("Get next, length is %d", varNameLen);
-
     // Is this the first request?
-    if (!varNameLen)
+    if (GetNextParam->NameSize == 0)
     {
         DMSG("Frist run");
         // Yes, return first variable that can be found in any list
@@ -305,15 +297,15 @@ GetNextVariableName(
     {
         DMSG("Next run");
         // Validation on name length (we already know it's non-zero)
-        if (varNameLen % sizeof(WCHAR))
+        if (GetNextParam->NameSize % sizeof(WCHAR))
         {
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
 
-        // Guard against overflow
-        if (((varNameLen + sizeof(VARIABLE_GET_NEXT_PARAM)) < varNameLen) ||
-            (GetNextParamSize < (sizeof(VARIABLE_GET_NEXT_PARAM) + varNameLen)))
+        // Guard against overflow with name string
+        if (((GetNextParam->NameSize + sizeof(VARIABLE_GET_NEXT_PARAM)) < GetNextParam->NameSize) ||
+            (GetNextParamSize < (sizeof(VARIABLE_GET_PARAM) + GetNextParam->NameSize)))
         {
             EMSG("Get next variable bad parameters");
             status = TEE_ERROR_BAD_PARAMETERS;
@@ -322,11 +314,15 @@ GetNextVariableName(
 
         // Init for variable search
         varName = (PWSTR)(GetNextParam->Name);
+        vendorGuid = GetNextParam->VendorGuid;
+
+        // Init local name string
+        memset(&unicodeName, 0, sizeof(unicodeName));
         unicodeName.Buffer = varName;
         unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
         unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
 
-        if(unicodeName.MaximumLength > varNameLen)
+        if(unicodeName.MaximumLength > GetNextParam->NameSize)
         {
             DMSG("Unicode string is not null-terminated");
             status = TEE_ERROR_BAD_PARAMETERS;
@@ -372,10 +368,14 @@ GetNextVariableName(
     }
 
     // Prepare the result buffer with variable size, name, and guid
-    // TODO: Guard against overflow here
     size = nextVar->NameSize + sizeof(VARIABLE_GET_NEXT_RESULT);
-    DMSG("Var at 0x%lx has name size 0x%x", (UINT_PTR)nextVar, size);
-    //DHEXDUMP((PBYTE)nextVar->NameOffset+nextVar->BaseAddress, nextVar->NameSize);
+    if (size < nextVar->NameSize)
+    {
+        EMSG("Get next variable error: Overflow result buffer");
+        status = TEE_ERROR_BAD_STATE;
+        goto Cleanup;
+    }
+
     if (size > *GetNextResultSize)
     {
         DMSG("Short buffer, have 0x%x bytes", *GetNextResultSize);
@@ -443,6 +443,15 @@ SetVariable(
     offsetLimit = SetParamSize - sizeof(VARIABLE_SET_PARAM);
 
     // Validate sizes/offsets
+    if ((varNameSize + sizeof(VARIABLE_SET_PARAM) < varNameSize)
+        || (dataSize + sizeof(VARIABLE_SET_PARAM) < dataSize)
+        || (dataSize + varNameSize < MAX(dataSize, varNameSize))
+        || (totalSize < MAX(sizeof(VARIABLE_SET_PARAM), MAX(dataSize, varNameSize))))
+    {
+        EMSG("Set variable error: Buffer overflow");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
     if ((totalSize < SetParamSize)
         || (SetParam->OffsetName > offsetLimit)
         || (SetParam->OffsetData > offsetLimit)

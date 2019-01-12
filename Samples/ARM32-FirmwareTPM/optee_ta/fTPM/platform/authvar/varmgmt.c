@@ -1745,8 +1745,8 @@ CompareEntries(
     if (memcmp(Guid, &Var->VendorGuid, sizeof(GUID)) == 0)
     {
         // Ok, name strings of the same length?
-        // When NameSize was set any  extra trailing characters beyond the null
-        // terminator were ignored, so it should correctly match Name->Length.
+        // When NameSize was set any extra trailing characters beyond the null
+        // terminator were ignored, so it should correctly match Name->Length + WCHAR.
         if (Name->Length == (Var->NameSize - sizeof(WCHAR)))
         {
             // Yes, do they match? (case sensitive!)
