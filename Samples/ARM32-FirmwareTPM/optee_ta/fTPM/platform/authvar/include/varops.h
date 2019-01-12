@@ -218,6 +218,11 @@ extern const GUID EfiGlobalDatabaseGUID;    // EFI GUID
 extern const GUID EfiSecurityDatabaseGUID;  // EFI GUID
 extern VTYPE_INFO VarInfo[VTYPE_END];       // Variable storage
 
+BOOL
+AuthvarCommitChanges(
+    VOID
+);
+
 //
 // Variable operation prototypes
 //

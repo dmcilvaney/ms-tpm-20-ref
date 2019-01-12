@@ -43,6 +43,46 @@ const GUID EfiSecurityDatabaseGUID = EFI_IMAGE_SECURITY_DATABASE_GUID;
 // AuthVar functions
 //
 
+BOOL
+AuthvarCommitChanges(
+    VOID
+)
+/*++
+
+    Routine Description:
+
+        Request a NV writeback. If high performance mode is enabled this
+        may be delayed (this is not UEFI spec compliant, but will significantly
+        improve boot time).
+
+        In high performance mode writebacks will only occure every
+        AUTHVAR_WRITEBACK_DELAY writes until UEFI enters runtime mode, at which
+        point they will always writeback immediately.
+
+    Returns:
+
+        BOOLEAN: Was a writeback actually triggered?
+
+--*/
+{
+    DMSG("Authvar commit");
+#ifdef AUTHVAR_HIGH_PERFORMANCE_MODE
+    static INT16 counter = 0;
+
+    counter++;
+    DMSG("Counter is %d, in runtime? %d", counter, fTPMIsRuntime);
+
+    if(counter != AUTHVAR_WRITEBACK_DELAY && !fTPMIsRuntime) {
+        DMSG("Skipping writeback to improve performance. (%d of %d skipped)",
+                counter % AUTHVAR_WRITEBACK_DELAY, AUTHVAR_WRITEBACK_DELAY);
+        return FALSE;
+    }
+    counter = 0;
+#endif
+    _plat__NvCommit();
+    return TRUE;
+}
+
 TEE_Result
 GetVariable(
     UINT32               GetParamSize,  // IN
@@ -683,7 +723,7 @@ Cleanup:
         DMSG("Cleaning up duplicate");
         TEE_Free(content);
     }
-    _plat__NvCommit();
+    AuthvarCommitChanges();
     DMSG("set done");
     DMSG("Data:0x%lx, Size:0x%x", (UINT_PTR)data, dataSize);
     return status;
