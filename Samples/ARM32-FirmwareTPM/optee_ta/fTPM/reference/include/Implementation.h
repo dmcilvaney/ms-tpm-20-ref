@@ -176,7 +176,7 @@
 #define MIN_EVICT_OBJECTS               2
 #define NUM_POLICY_PCR_GROUP            1
 #define NUM_AUTHVALUE_PCR_GROUP         1
-#define MAX_CONTEXT_SIZE                2474
+#define MAX_CONTEXT_SIZE                1920
 #define MAX_DIGEST_BUFFER               1024
 #define MAX_NV_INDEX_SIZE               2048
 #define MAX_NV_BUFFER_SIZE              1024
