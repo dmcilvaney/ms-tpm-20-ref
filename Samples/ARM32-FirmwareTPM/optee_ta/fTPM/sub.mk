@@ -26,7 +26,7 @@ WOLF_INCLUDES = -include ./reference/include/user_settings.h
 INCLUDE_OVERWRITES = $(FTPM_INCLUDES) $(WOLF_INCLUDES)
 
 CPPFLAGS += -DTHIRTY_TWO_BIT -DCFG_TEE_TA_LOG_LEVEL=$(CFG_TEE_TA_LOG_LEVEL) -D_ARM_ -w -Wno-strict-prototypes -mcpu=$(TA_CPU) -fstack-protector -Wstack-protector -mno-unaligned-access
-cflags-y += $(INCLUDE_OVERWRITES)
+CFLAGS += $(INCLUDE_OVERWRITES)
 
 ifeq ($(CFG_TA_DEBUG),y)
 CPPFLAGS += -DfTPMDebug=1
