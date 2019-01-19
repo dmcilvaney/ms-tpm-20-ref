@@ -34,22 +34,6 @@
 #include <varmgmt.h>
 #include <NvMemoryLayout.h>
 
-//
-// Offsets and lengths (Note: naturally NV_BLOCK_SIZE aligned!)
-//
-#define SECUREBOOT_VAR_RESERVED_START   (0)
-#define SECUREBOOT_VAR_RESERVED_LEN     (32 * 1024)
-
-#define BOOT_VAR_RESERVED_START         (SECUREBOOT_VAR_RESERVED_START + SECUREBOOT_VAR_RESERVED_LEN)
-#define BOOT_VAR_RESERVED_LEN           (8 * 1024)
-
-#define PRIVATE_AUTH_VAR_RESERVED_START (BOOT_VAR_RESERVED_START + BOOT_VAR_RESERVED_LEN)
-#define PRIVATE_AUTH_VAR_RESERVED_LEN   (4 * 1024)
-
-#define TOTAL_RESERVED_LEN  (SECUREBOOT_VAR_RESERVED_LEN + BOOT_VAR_RESERVED_LEN + PRIVATE_AUTH_VAR_RESERVED_LEN)
-#define GENERAL_VAR_START   (PRIVATE_AUTH_VAR_RESERVED_START + PRIVATE_AUTH_VAR_RESERVED_LEN)
-#define GENERAL_VAR_LEN     (NV_AUTHVAR_SIZE - (TOTAL_RESERVED_LEN))
-
 // 
 // Auth Var storage layout
 //
@@ -57,27 +41,22 @@ VTYPE_INFO VarInfo[VTYPE_END] =
 {
     {
         L"SecureBootVariables", VTYPE_SECUREBOOT,
-        //SECUREBOOT_VAR_RESERVED_START, SECUREBOOT_VAR_RESERVED_LEN,
         { 0 }, TRUE,
     },
     {
         L"BootVariables", VTYPE_BOOT,
-        //BOOT_VAR_RESERVED_START, BOOT_VAR_RESERVED_LEN,
         { 0 }, TRUE,
     },
     {
         L"Runtime Private Authenticated Variables", VTYPE_PVT_AUTHENTICATED,
-        //PRIVATE_AUTH_VAR_RESERVED_START, PRIVATE_AUTH_VAR_RESERVED_LEN,
         { 0 }, TRUE,
     },
     {
         L"General Space", VTYPE_GENERAL,
-        //GENERAL_VAR_START, GENERAL_VAR_LEN,
         { 0 }, TRUE,
     },
     {
         L"Volatile Variable", VTYPE_VOLATILE,   // VOLATILE AUTH VARS ARE NOT PERSISTED!
-        //NULL, 0,                                // VOLATILE AUTH VARS ARE NOT PERSISTED!
         { 0 }, FALSE,                           // VOLATILE AUTH VARS ARE NOT PERSISTED!
     }
 };
@@ -1648,6 +1627,7 @@ QueryByAttribute(
     VARTYPE   varType;
     PUEFI_VARIABLE pVar;
     UINT64 MaxSize = 0;
+    UINT64 TotalVolatileSize = 0;
     UINT32 VarSize = 0;
 
     DMSG("Querying variables by attributes");
@@ -1663,23 +1643,38 @@ QueryByAttribute(
         return;
     }
 
+    // GetVariableType is only suitable for determining non-volatile variable types.
+    if(!(Attributes.NonVolatile)) {
+        varType = VTYPE_VOLATILE;
+    }
+
     PLIST_ENTRY head = &VarInfo[varType].Head;
     PLIST_ENTRY cur = head->Flink;
     while ((cur) && (cur != head))
     {
         pVar = (PUEFI_VARIABLE)cur;
-        
+
         // From UEFI Spec 2.7:
         // MaximumVariableSize includes overhead needed to store the variable,
         // but not the overhead caused by storing the name.
-        VarSize = ROUNDUP(pVar->AllocSize - pVar->NameSize, NV_AUTHVAR_ALIGNMENT);
+
+        if(varType = VTYPE_VOLATILE) {
+            VarSize =sizeof(UEFI_VARIABLE) + pVar->DataSize + pVar->NameSize;
+        } else {
+            VarSize = ROUNDUP(pVar->AllocSize - pVar->NameSize, NV_AUTHVAR_ALIGNMENT);
+        }
 
         while(pVar->NextOffset) {
             pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->NextOffset);
             VarSize += pVar->AllocSize;
         }
 
+        TotalVolatileSize += VarSize;
+
         MaxSize = MAX(MaxSize, VarSize);
+        
+        char name[50];
+        IMSG("%s has size 0x%x", CovnertWCharToChar(pVar->BaseAddress + pVar->NameOffset, name, 50), VarSize);
 
         cur = cur->Flink;
     }
@@ -1695,8 +1690,17 @@ QueryByAttribute(
 
     if (RemainingVarStorage)
     {
-        *RemainingVarStorage = s_nvLimit - s_nextFree - sizeof(UEFI_VARIABLE);
-        FMSG("Remaining storage is 0x%x", (UINT32)RemainingVarStorage);
+        if(varType = VTYPE_VOLATILE) {
+            *RemainingVarStorage = MAX_VOLATILE_STORAGE - 
+                MIN(MAX_VOLATILE_STORAGE, TotalVolatileSize);
+            FMSG("Remaining volatile storage is 0x%x - 0x%x = 0x%x",
+                    (UINT32)MAX_VOLATILE_STORAGE,
+                    (UINT32)TotalVolatileSize,
+                    (UINT32)*RemainingVarStorage);
+        } else {
+            *RemainingVarStorage = s_nvLimit - s_nextFree - sizeof(UEFI_VARIABLE);
+            FMSG("Remaining NV storage is 0x%x", (UINT32)RemainingVarStorage);
+        }
     }
 
     if (MaxVarSize)

@@ -45,7 +45,7 @@
 // A change to this constant should be the result of a change to
 // implementation.h, Admin.h, and/or varops.h. A change to the size
 // of fTPM's NV memory needs to be consistent accross these headers.
-#define NV_TOTAL_MEMORY_SIZE    (0x20000UL)
+#define NV_TOTAL_MEMORY_SIZE    (0x10000UL)
 #define NV_BLOCK_SIZE           (0x1000UL)
 
 // Actual size of Admin space used. (See note in NVMem.c):
@@ -68,6 +68,10 @@
 #define NV_AUTHVAR_START    (NV_TOTAL_MEMORY_SIZE - NV_AUTHVAR_SIZE)
 // Align all authvar structs to 64 bit alignment
 #define NV_AUTHVAR_ALIGNMENT     __alignof__(UINT64)
+// Volatile variables must fit inside the heap as defined in user_ta_header_defines.h
+// Currently TA_DATA_SIZE = (512 * 1024) = (0x80000) = 512K. TA_DATA_SIZE must also leave
+// enough room for the crypto stack's malloc calls.
+#define MAX_VOLATILE_STORAGE (0x80000 / 2)
 
 //
 // Note that NV_TOTAL_MEMORY_SIZE *MUST* be a factor of NV_BLOCK_SIZE.

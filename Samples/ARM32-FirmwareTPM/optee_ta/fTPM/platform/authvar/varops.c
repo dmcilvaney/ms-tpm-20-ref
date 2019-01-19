@@ -440,7 +440,7 @@ GetNextVariableName(
 
 Cleanup:
     if(status!= TEE_SUCCESS) {
-        EMSG("Set failed with 0x%x", status);
+        EMSG("Get next variable failed with 0x%x", status);
     }
     return status;
 }
@@ -828,7 +828,7 @@ QueryVariableInfo(
 
     // Validate requested attributes
     if ((attrib.Flags & ~(EFI_KNOWN_ATTRIBUTES)) || ((fTPMIsRuntime) && (attrib.BootService))
-        || (attrib.AuthWrite) || !(attrib.NonVolatile) || (attrib.HwErrorRec))
+        || (attrib.AuthWrite) || (attrib.HwErrorRec))
     {
         EMSG("Query variable error: Bad parameters");
         status = TEE_ERROR_BAD_PARAMETERS;
