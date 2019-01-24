@@ -100,7 +100,7 @@ TpmSizeChecks(
         // round required size up to nearest 8 byte boundary.
         biggestContext = 8 * ((biggestContext + 7) / 8);
 
-        if(MAX_CONTEXT_SIZE != biggestContext)
+        if(MAX_CONTEXT_SIZE < biggestContext)
         {
             printf("MAX_CONTEXT_SIZE should be changed to %d\n", biggestContext);
             pAssert(0);

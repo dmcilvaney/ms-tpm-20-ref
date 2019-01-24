@@ -390,7 +390,7 @@ SetVariable(
         || (SetParam->Size != sizeof(VARIABLE_SET_PARAM)))
     {
         EMSG("Set variable bad parameters");
-        EMSG("sp: %x, sps : %x, sp->s : %x", SetParam, SetParamSize, SetParam->Size);
+        EMSG("sp: %p, sps : %x, sp->s : %x", SetParam, SetParamSize, SetParam->Size);
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -544,6 +544,7 @@ SetVariable(
                 DMSG("set failed: %x", status);
                 goto Cleanup;
             }
+            DMSG("AUTHAUTHAUTHSUCCESS");
 
             //data = content;
             //dataSize = contentSize;
@@ -604,6 +605,8 @@ SetVariable(
         DMSG("Attempted deletion of non-existing variable.");
         goto Cleanup;
     }
+
+    DMSG("HERE??");
 
     // No, new variable creation. For NV, BS and BS+RT is allowed. RT-only is
     // invalid. However, caller is responsible for following BS-implies-RT rule.

@@ -36,7 +36,7 @@
 #include <stdint.h>
 
 #ifndef CONST
-#define CONST               const
+#define CONST   const
 #endif
 
 #ifndef VOID
@@ -53,6 +53,10 @@ typedef void VOID, *PVOID;
 
 #ifndef FORCEINLINE
 #define FORCEINLINE   static __inline__
+#endif
+
+#ifndef UNUSED_PARAMETER
+#define UNUSED_PARAMETER(x)     (void)(x)
 #endif
 
 //
@@ -163,8 +167,8 @@ typedef const UNICODE_STRING *PCUNICODE_STRING;
 
 #define UNICODE_NULL ((WCHAR)0) // winnt
 
-#define UNICODE_STRING_MAX_BYTES ((USHORT) 65534) // winnt
-#define UNICODE_STRING_MAX_CHARS (32767) // winnt
+#define UNICODE_STRING_MAX_BYTES ((USHORT) 65534)   // winnt
+#define UNICODE_STRING_MAX_CHARS (32767)            // winnt
 
 //
 // Boolean
@@ -191,7 +195,6 @@ typedef union _LARGE_INTEGER {
 //
 // Physical address.
 //
-
 typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
 
 //
@@ -245,8 +248,9 @@ typedef const GUID *PCGUID;
 //
 // wcs*()
 //
-static __inline__
-int wcscmp(
+FORCEINLINE
+int
+wcscmp(
     const wchar_t * src,
     const wchar_t * dst
 )
@@ -265,8 +269,11 @@ int wcscmp(
     return(ret);
 }
 
-static __inline__
-size_t wcslen(const wchar_t* str)
+FORCEINLINE
+size_t
+wcslen(
+    const wchar_t* str
+)
 {
     size_t len = -1;
 

@@ -42,38 +42,39 @@
 #include    "NvMemoryLayout.h"
 
 // From Cancel.c
-BOOL                 s_isCanceled;
+BOOL                s_isCanceled;
 
 // From Clock.c
-unsigned int         s_adjustRate;
-BOOL                 s_timerReset;
-BOOL                 s_timerStopped;
+unsigned int        s_adjustRate;
+BOOL                s_timerReset;
+BOOL                s_timerStopped;
 
 #ifndef HARDWARE_CLOCK
-clock64_t            s_realTimePrevious;
-clock64_t            s_tpmTime;
+clock64_t           s_realTimePrevious;
+clock64_t           s_tpmTime;
 
-clock64_t            s_lastSystemTime;
-clock64_t            s_lastReportedTime;
+clock64_t           s_lastSystemTime;
+clock64_t           s_lastReportedTime;
 
 
 #endif
 
 // From LocalityPlat.c
-unsigned char        s_locality;
+unsigned char       s_locality;
 
 // From Power.c
-BOOL                 s_powerLost;
+BOOL                s_powerLost;
 
 // From Entropy.c
 // This values is used to determine if the entropy generator is broken. If two 
 // consecutive values are the same, then the entropy generator is considered to be
 // broken.
-uint32_t             lastEntropy;
+uint32_t            lastEntropy;
 
 // For NVMem.c
-unsigned char        s_NV[NV_TOTAL_MEMORY_SIZE];
-BOOL                 s_NvIsAvailable;
+UINT64              s_NV64[(NV_TOTAL_MEMORY_SIZE)/sizeof(UINT64)];
+unsigned char       *s_NV = (unsigned char *)s_NV64;
+BOOL                s_NvIsAvailable;
 
 // From PPPlat.c
 BOOL  s_physicalPresence;

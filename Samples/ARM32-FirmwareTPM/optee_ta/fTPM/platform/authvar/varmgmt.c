@@ -34,6 +34,12 @@
 #include <varmgmt.h>
 #include <NvMemoryLayout.h>
 
+#if (TRACE_LEVEL < TRACE_DEBUG)
+#define DumpAuthvarMemory()   (void)0
+#else
+#define DumpAuthvarMemory()   DumpAuthvarMemoryImpl()
+#endif
+
 //
 // Offsets and lengths (Note: naturally NV_BLOCK_SIZE aligned!)
 //
@@ -77,55 +83,60 @@ VTYPE_INFO VarInfo[VTYPE_END] =
     },
     {
         L"Volatile Variable", VTYPE_VOLATILE,   // VOLATILE AUTH VARS ARE NOT PERSISTED!
-        //NULL, 0,                                // VOLATILE AUTH VARS ARE NOT PERSISTED!
+        //NULL, 0,                              // VOLATILE AUTH VARS ARE NOT PERSISTED!
         { 0 }, FALSE,                           // VOLATILE AUTH VARS ARE NOT PERSISTED!
     }
 };
 
-LIST_ENTRY MemoryReclamationList = {0};
+// TODO: DESCRIPTION
+LIST_ENTRY MemoryReclamationList = { 0 };
 
-//
 // Offsets/ptrs for NV vriable storage
-//
 static UINT_PTR s_nextFree = NV_AUTHVAR_START;
 static const UINT_PTR s_nvLimit = NV_AUTHVAR_START + NV_AUTHVAR_SIZE;
 
-//
 // Handy empty GUID const
-//
 GUID GUID_NULL = { 0, 0, 0,{ 0, 0, 0, 0, 0, 0, 0, 0 } };
 
 //
 // Memory Management Prototypes
 //
+
+static
 VOID
 TrackOffset(
-    PUEFI_VARIABLE pVar
+    PUEFI_VARIABLE pVar             // IN
 );
 
+static
 VOID
 UpdateOffsets(
-    UINT_PTR NVOffset,
-    UINT32 ShrinkAmount
+    UINT_PTR NVOffset,              // IN
+    UINT32 ShrinkAmount             // IN
 );
 
+static
 VOID
-DumpAuthvarMemoryImpl(VOID);
+DumpAuthvarMemoryImpl(
+    VOID
+);
 
+static
 VOID
 MergeAdjacentBlocks (
-    PUEFI_VARIABLE FirstElement
+    PUEFI_VARIABLE FirstElement     // IN
 );
 
+static
 BOOLEAN
 ReclaimVariable(
-    PUEFI_VARIABLE pVar
+    PUEFI_VARIABLE pVar             // IN
 );
 
 UINT32
 AuthVarInitStorage(
-    UINT_PTR StartingOffset,
-    BOOLEAN ReInitialize
+    UINT_PTR StartingOffset,        // IN
+    BOOLEAN ReInitialize            // IN
 );
 
 //
@@ -143,74 +154,64 @@ CompareEntries(
 static
 BOOLEAN
 GetVariableType(
-    PCWSTR      VarName,    // IN
-    PCGUID      VendorGuid, // IN
-    ATTRIBUTES  Attributes, // IN
-    PVARTYPE    VarType     // OUT
+    PCWSTR      VarName,            // IN
+    PCGUID      VendorGuid,         // IN
+    ATTRIBUTES  Attributes,         // IN
+    PVARTYPE    VarType             // OUT
 );
 
 static
 BOOLEAN
 IsSecureBootVar(
-    PCWSTR  VarName,        // IN
-    PCGUID  VendorGuid      // IN
+    PCWSTR  VarName,                // IN
+    PCGUID  VendorGuid              // IN
 );
 
 //
 // Auth Var Storage Maintenance Functions
-//
+// 
+// A note on memory management:
+// 
+// When a variable is deleted or shrunk it will leave gaps. These gaps
+// are cleared during initialization of the NV memory on device startup.
+// 
+// Each node has an actual size, and an allocated size (aligned). The
+// NV backed byte array (s_NV) is iterated through to find each block.
+// 
+// A variable's data may be spread across multiple blocks via a linked
+// list. This list is represented via relative offset values in each block.
+// 
+// For each block:
+//  1.  Previous runs of the memory reclamation code may have removed a
+//      variable which broke another variable into multiple blocks. Merge
+//      these adjacent blocks into a single large block.
+//  2.  Is the space used by the current block smaller than the 
+//      allocated space (not less than min alignment)?
+//  2a. Or has the variable been deleted? If yes to either then find
+//      the next variable, skipping over deleted variables along the way.
+//  3.  Move the next (non-deleted) block forward into the free space.
+//  4.  Increase the allocation size of that block so there is no gap
+//      left. When the block is processed that gap will be closed.
+//  5.  If the current block has a NextOffset link to another node
+//      in a list:
+//          o Keep track of the current node so the offset can be
+//            updated if the next node is moved forwards.
+//  6.  Check the list of tracked blocks to see if any were linked
+//      to the next block, if so update the link and remove them
+//      from the list since the next block has reached it's final
+//      location.
+// 
+//  TODO: Merge linked blocks as we find them
+// 
 
-/**
- * Memory Management:
- * 
- * When a variable is deleted or shrunk it will leave gaps. These gaps
- * are cleared during initialization of the NV memory.
- * 
- * Each node has an actual size, and an allocated size (alligned). The
- * NV backed byte array (s_NV) is iterated through to find each block.
- * 
- * A variable's data may be spread across multiple blocks via a linked
- * list. This list is represented via relative offset values in each block.
- * 
- * For each block:
- *      - Previous runs of the memory reclamation code may have removed
- *          a variable which broke another variable into multiple blocks.
- *          Merge these adjacent blocks into a single large block.
- *      - Is the space used by the current block smaller than the 
- *          allocated space (not less than min alignment)?
- *      - Or has the variable been deleted?
- *      - If yes to either then find the next variable, skipping over
- *          deleted variables along the way.
- *      - Move the next (non-deleted) block forward into the free space.
- *      - Increase the allocation size of that block so there is no
- *          gap left. When the block is processed that gap will be
- *          closed.
- *      - If the current block has a NextOffset link to another node
- *          in a list:
- *              - Keep track of the current node so the offset can be
- *                  updated if the next node is moved forwards.
- *      - Check the list of tracked blocks to see if any were linked
- *          to the next block, if so update the link and remove them
- *          from the list since the next block has reached it's final
- *          location.
- *      - TODO:
- *          Merge linked blocks as we find them
- */
-
-#if (TRACE_LEVEL < TRACE_DEBUG)
-#define DumpAuthvarMemory()   (void)0
-#else
-#define DumpAuthvarMemory()   DumpAuthvarMemoryImpl()
-#endif
-
+static
 VOID
 DumpAuthvarMemoryImpl(VOID)
 {
     PUEFI_VARIABLE pVar = (PUEFI_VARIABLE)ROUNDUP((UINT_PTR)&(s_NV[NV_AUTHVAR_START]), NV_AUTHVAR_ALIGNMENT);
     PUEFI_VARIABLE pLinkVar;
-
-    int mainCounter = 0, linkCounter;
-    bool linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
+    UINT32 mainCounter = 0, linkCounter;
+    BOOLEAN linkBitArray[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {FALSE};
 
     DMSG("\t================================");
     DMSG("\tStart of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
@@ -267,10 +268,11 @@ DumpAuthvarMemoryImpl(VOID)
     DMSG("%d", collector);
 }
 
+static
 VOID
 UpdateOffsets(
-    UINT_PTR NVOffset,
-    UINT32 ShrinkAmount
+    UINT_PTR NVOffset,      // IN
+    UINT32 ShrinkAmount     // IN
 )
 /*++
 
@@ -287,6 +289,7 @@ UpdateOffsets(
         CurrentNVOffset - Offset of the current variable.
         
         ShrinkAmount - How much the stored variables have been shrunk
+
 --*/
 {
     PLIST_ENTRY head = &MemoryReclamationList;
@@ -313,9 +316,10 @@ UpdateOffsets(
     }
 }
 
+static
 VOID
 TrackOffset(
-    PUEFI_VARIABLE pVar
+    PUEFI_VARIABLE pVar     // IN
 )
 /*++
 
@@ -331,6 +335,7 @@ TrackOffset(
 --*/
 {
     PMEMORY_RECLAMATION_NODE newNode = TEE_Malloc(sizeof(MEMORY_RECLAMATION_NODE), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+
     if (!newNode) {
         EMSG("Out of memory during initialization, fatal error");
         TEE_Panic(TEE_ERROR_OUT_OF_MEMORY);
@@ -344,8 +349,11 @@ TrackOffset(
     DMSG("Tracking a variable which points to 0x%lx (0x%lx)", newNode->NV_Offset, newNode->NV_Offset + (UINT_PTR)s_NV);
 }
 
+static
 VOID
-MergeAdjacentBlocks (PUEFI_VARIABLE FirstBlock)
+MergeAdjacentBlocks(
+    PUEFI_VARIABLE FirstBlock       // IN
+)
 /*++
     Routine Description:
 
@@ -405,9 +413,10 @@ MergeAdjacentBlocks (PUEFI_VARIABLE FirstBlock)
     }
 }
 
+static
 BOOLEAN
 ReclaimVariable(
-    PUEFI_VARIABLE pVar
+    PUEFI_VARIABLE pVar     // IN
 )
 /*++
 
@@ -564,8 +573,8 @@ ReclaimVariable(
 
 UINT32
 AuthVarInitStorage(
-    UINT_PTR StartingOffset,
-    BOOLEAN ReInitialize
+    UINT_PTR StartingOffset,        // IN
+    BOOLEAN ReInitialize            // IN
 )
 /*++
 
@@ -749,9 +758,9 @@ SearchList(
 
     Returns:
 
-    None
+        None
 
-    --*/
+--*/
 {
     UINT32 i;
 
@@ -796,12 +805,12 @@ SearchList(
 
 TEE_Result
 CreateVariable(
-    PCUNICODE_STRING        UnicodeName,
-    PCGUID                  VendorGuid,
-    ATTRIBUTES              Attributes,
-    PEXTENDED_ATTRIBUTES    ExtAttributes,
-    UINT32                  DataSize,
-    PBYTE                   Data
+    PCUNICODE_STRING        UnicodeName,        // IN
+    PCGUID                  VendorGuid,         // IN
+    ATTRIBUTES              Attributes,         // IN
+    PEXTENDED_ATTRIBUTES    ExtAttributes,      // IN
+    UINT32                  DataSize,           // IN
+    PBYTE                   Data                // IN
 )
 /*++
 
@@ -1166,6 +1175,8 @@ DeleteVariable(
 )
 {
     UINT_PTR NextOffset;
+    UNUSED_PARAMETER(VarType);
+
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))
     {
@@ -1229,6 +1240,8 @@ AppendVariable(
 {
     TEE_Result  status = TEE_SUCCESS;
     DMSG("Append variable");
+
+    UNUSED_PARAMETER(VarType);
 
     // First, is this a volatile variable?
     if (!(Attributes.NonVolatile))

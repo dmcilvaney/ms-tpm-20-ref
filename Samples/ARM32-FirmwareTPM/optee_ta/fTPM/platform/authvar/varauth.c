@@ -36,9 +36,9 @@
 
 // WC related definitions (in here for clarity's sake)
 #define MAX_DECODED_CERTS   10
-#define WC_CHECK(exp)       if ((exp) < 0) { status = FALSE; goto Cleanup; }
+#define WC_CHECK(x)       if ((x) < 0) { DMSG("WCCHECK: %x", x); status = FALSE; goto Cleanup; }
 
-BYTE Sha256SignatureBlock[] = { 
+static BYTE Sha256SignatureBlock[] = { 
     0x30, 0x31, 0x30, 0x0D, 0x06, 0x09, 0x60, 0x86,
     0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
     0x00, 0x04, 0x20, 0xDE, 0x16, 0x52, 0x8A, 0x1E,
@@ -61,41 +61,41 @@ typedef enum _PARSE_SECURE_BOOT_OP {
 } PARSE_SECURE_BOOT_OP;
 
 // Storage for secureboot variable information
-CONST SECUREBOOT_VARIABLE_INFO SecurebootVariableInfo[] =
+static CONST SECUREBOOT_VARIABLE_INFO SecurebootVariableInfo[] =
 {
     {
         SecureBootVariablePK,                                     // Id
         {                                                         
-            sizeof(EFI_PLATFORMKEY_VARIABLE) - sizeof(WCHAR),     // UnicodeName.Length
-            sizeof(EFI_PLATFORMKEY_VARIABLE),                     // UnicodeName.MaximumLength
-            (CONST PWCH) EFI_PLATFORMKEY_VARIABLE,                // UnicodeName.Buffer
+            sizeof(EFI_PLATFORMKEY_VARIABLE) - sizeof(WCHAR),     // Length
+            sizeof(EFI_PLATFORMKEY_VARIABLE),                     // MaximumLength
+            (CONST PWCH) EFI_PLATFORMKEY_VARIABLE,                // Buffer
         },                                                        
         EFI_GLOBAL_VARIABLE,                                      // VendorGuid
     },                                                            
     {                                                             
         SecureBootVariableKEK,                                    // Id
         {                                                         
-            sizeof(EFI_KEK_SECURITY_DATABASE) - sizeof(WCHAR),    // UnicodeName.Length
-            sizeof(EFI_KEK_SECURITY_DATABASE),                    // UnicodeName.MaximumLength
-            (CONST PWCH) EFI_KEK_SECURITY_DATABASE,               // UnicodeName.Buffer
+            sizeof(EFI_KEK_SECURITY_DATABASE) - sizeof(WCHAR),    // Length
+            sizeof(EFI_KEK_SECURITY_DATABASE),                    // MaximumLength
+            (CONST PWCH) EFI_KEK_SECURITY_DATABASE,               // Buffer
         },                                                        
         EFI_GLOBAL_VARIABLE,                                      // VendorGuid
     },
     {
         SecureBootVariableDB,                                     // Id
         {                                                         
-            sizeof(EFI_IMAGE_SECURITY_DATABASE) - sizeof(WCHAR),  // UnicodeName.Length
-            sizeof(EFI_IMAGE_SECURITY_DATABASE),                  // UnicodeName.MaximumLength
-            (CONST PWCH) EFI_IMAGE_SECURITY_DATABASE,             // UnicodeName.Buffer
+            sizeof(EFI_IMAGE_SECURITY_DATABASE) - sizeof(WCHAR),  // Length
+            sizeof(EFI_IMAGE_SECURITY_DATABASE),                  // MaximumLength
+            (CONST PWCH) EFI_IMAGE_SECURITY_DATABASE,             // Buffer
         },                                                        
         EFI_IMAGE_SECURITY_DATABASE_GUID,                         // VendorGuid
     },
     {
         SecureBootVariableDBX,                                    // Id
         {
-            sizeof(EFI_IMAGE_SECURITY_DATABASE1) - sizeof(WCHAR), // UnicodeName.Length
-            sizeof(EFI_IMAGE_SECURITY_DATABASE1),                 // UnicodeName.MaximumLength
-            (CONST PWCH) EFI_IMAGE_SECURITY_DATABASE1,            // UnicodeName.Buffer
+            sizeof(EFI_IMAGE_SECURITY_DATABASE1) - sizeof(WCHAR), // Length
+            sizeof(EFI_IMAGE_SECURITY_DATABASE1),                 // MaximumLength
+            (CONST PWCH) EFI_IMAGE_SECURITY_DATABASE1,            // Buffer
         },
         EFI_IMAGE_SECURITY_DATABASE_GUID,                         // VendorGuid
     },
@@ -106,15 +106,88 @@ CONST SECUREBOOT_VARIABLE_INFO SecurebootVariableInfo[] =
 //
 
 static
+BOOLEAN
+WrapPkcs7Data(
+    CONST UINT8 *P7Data,            // IN
+    UINTN P7Length,                 // IN
+    BOOLEAN *WrapFlag,              // OUT
+    UINT8 **WrapData,               // OUT
+    UINTN *WrapDataSize             // OUT
+);
+
+static 
+UINT32
+GetStartOfVal(
+    PBYTE Message,                  // IN
+    UINT32 Position                 // IN
+);
+
+static
+BOOLEAN
+Pkcs7Verify(
+    CONST BYTE *P7Data,             // IN
+    UINTN P7Length,                 // IN
+    UINT32 CertCount,               // IN
+    CERTIFICATE *CertList,          // IN
+    CONST BYTE *InData,             // IN
+    UINTN DataLength                // IN
+);
+
+static
+TEE_Result
+ParseSecurebootVariables(
+    PBYTE Data,                     // IN
+    UINT32 DataSize,                // IN
+    PARSE_SECURE_BOOT_OP Op,        // IN
+    CERTIFICATE *Certs,             // INOUT
+    PUINT32 NumberOfCerts           // INOUT
+);
+
+TEE_Result
+ReadSecurebootVariables(
+    SECUREBOOT_VARIABLE Id,     // IN
+    BYTE** Data,                // OUT
+    PUINT32 DataSize            // OUT
+);
+
+static
+TEE_Result
+PopulateCerts(
+    SECUREBOOT_VARIABLE Var1,       // IN
+    SECUREBOOT_VARIABLE Var2,       // IN
+    CERTIFICATE **Certs,            // INOUT              
+    UINT32 *NumberOfCerts           // OUT
+);
+
+static
+TEE_Result
+CheckSignatureList(
+    EFI_SIGNATURE_LIST* SignatureList,  // IN
+    BYTE *SignatureListEnd,             // IN
+    UINT32 *NumberOfEntries             // OUT
+);
+
+static
+TEE_Result
+CheckForDuplicateSignatures(
+    PCUEFI_VARIABLE Var,            // IN
+    BYTE *Data,                     // IN
+    UINT32 DataSize,                // IN
+    BOOLEAN *DuplicatesFound,       // OUT
+    BYTE **NewData,                 // OUT
+    UINT32 *NewDataSize             // OUT
+);
+
+static
 TEE_Result
 ValidateParameters(
-    PBYTE        Data,              // IN
-    UINT32       DataSize,          // IN
-    PBYTE       *SignedData,        // OUT
-    UINT32      *SignedDataSize,    // OUT
-    PBYTE       *ActualData,        // OUT
-    UINT32      *ActualDataSize,    // OUT
-    EFI_TIME    *EfiTime            // OUT
+    BYTE *Data,                     // IN
+    UINT32 DataSize,                // IN
+    PBYTE *SignedData,              // OUT
+    UINT32 *SignedDataSize,         // OUT
+    PBYTE *ActualData,              // OUT
+    UINT32 *ActualDataSize,         // OUT
+    EFI_TIME *EfiTime               // OUT
 );
 
 static
@@ -130,33 +203,25 @@ SecureBootVarAuth(
 );
 
 static
-TEE_Result
-CheckSignatureList(
-    EFI_SIGNATURE_LIST* SignatureList,
-    PBYTE SignatureListEnd,
-    PUINT32 NumberOfEntries
+BOOLEAN
+IdentifySecurebootVariable(
+    PCWSTR VariableName,            // IN
+    PCGUID VendorGuid,              // IN
+    PSECUREBOOT_VARIABLE Id         // OUT
 );
 
 static
 TEE_Result
 VerifyTime(
-    EFI_TIME    *FirstTime,
-    EFI_TIME    *SecondTime
+    EFI_TIME *FirstTime,            // IN
+    EFI_TIME *SecondTime            // IN
 );
 
 static
 BOOLEAN
 IsBefore(
-    EFI_TIME    *FirstTime,
-    EFI_TIME    *SecondTime
-);
-
-static
-BOOLEAN
-IdentifySecurebootVariable(
-    PCWSTR VariableName,        // IN
-    PCGUID VendorGuid,          // IN
-    PSECUREBOOT_VARIABLE Id     // OUT
+    EFI_TIME *FirstTime,            // IN
+    EFI_TIME *SecondTime            // IN
 );
 
 //
@@ -175,12 +240,12 @@ WrapPkcs7Data(
 /*++
     Routine Descrition:
 
-        Check input P7Data is a wrapped ContentInfo structure or not. If not,
-        construct a new structure to wrap P7Data.
+        Check if P7Data is a wrapped ContentInfo structure. If not,
+        allocate a new structure to wrap P7Data.
 
-        Caution: This function may receive untrusted input. UEFI Authenticated
-        Variable is external input, so this function will do basic check for
-        PKCS#7 data structure.
+        Caution: This function may receive untrusted input. Since a UEFI 
+        Authenticated Variable is external input, this function will do
+        basic checking of PKCS#7 data structure.
 
     Arguments:
 
@@ -188,11 +253,11 @@ WrapPkcs7Data(
 
         P7Length - Length of the PKCS#7 message in bytes.
 
-        WrapFlag - Receives TRUE if P7Data is ContentInfo structure.
+        WrapFlag - Receives TRUE if P7Data is ContentInfo struct, otherwise FALSE.
 
         WrapData - If return status of this function is TRUE:
-                     1) WrapData = pointer to P7Data, if WrapFlag == TRUE
-                     2) WrapData = to a new ContentInfo structure, otherwise.
+                     1) WrapData = pointer to P7Data when WrapFlag == TRUE
+                     2) WrapData = pointer to new ContentInfo struct otherwise.
                         It is the caller's responsibility to free this buffer.
 
         WrapDataSize - Length of structure pointed to by WrapData in bytes.
@@ -222,7 +287,7 @@ WrapPkcs7Data(
         }
     }
 
-    // If already wrapped then update outputs and return.
+    // If already wrapped then update outputs and return
     if (wrapped)
     {
         *WrapData = (UINT8 *)P7Data;
@@ -231,7 +296,7 @@ WrapPkcs7Data(
         return TRUE;
     }
 
-    // Wrap PKCS#7 signeddata to a ContentInfo structure
+    // Wrap PKCS#7 signed data to a ContentInfo structure
     *WrapDataSize = P7Length + 19;
     *WrapData = TEE_Malloc(*WrapDataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO);
     if (*WrapData == NULL)
@@ -287,56 +352,78 @@ WrapPkcs7Data(
     return TRUE;
 }
 
-// All DER objects are {tag, len, val}, but length is itself variable length.
-// This returns the start of the value so that we can add the length returned by 
-// the regular parsing functions
-int GetStartOfVal(char* msg, int pos)
+static 
+UINT32
+GetStartOfVal(
+    PBYTE Message,      // IN
+    UINT32 Position     // IN
+)
+/*++
+    Routine Description:
+
+        All DER objects are {tag, len, val}, but length is itself variable
+        in length. This function returns the start of the value so that we
+        can add the length returned by the regular parsing functions.
+
+    Argument:
+
+        Message - Pointer to object (byte pointer to start)
+
+        Position - Index of structure in Message
+
+    Returns:
+
+        Index of first byte of val
+--*/
 {
-    unsigned char lenByte = (unsigned char)msg[pos + 1];
-    if (lenByte < 127)return pos + 1 + 1;
-    int numBytes = msg[pos + 1] & 0x7f;
-    return pos + numBytes + 2;
+    BYTE lenByte = (unsigned char)Message[Position + 1];
+    UINT32 numBytes = Message[Position + 1] & 0x7f;
+
+    if (lenByte < 127)
+    {
+        return Position + 1 + 1;
+    }
+    return Position + numBytes + 2;
 }
 
 static
 BOOLEAN
 Pkcs7Verify(
-    CONST UINT8  *P7Data,
-    UINTN        P7Length,
-    UINT32       CertCount,
-    CONST UINT8  *CertList,
-    CONST UINT8  *InData,
-    UINTN        DataLength
+    CONST BYTE         *P7Data,         // IN
+    UINTN               P7Length,       // IN
+    UINT32              CertCount,      // IN
+    CERTIFICATE        *CertList,       // IN
+    CONST BYTE         *InData,         // IN
+    UINTN               DataLength      // IN
 )
 /*++
 
     Routine Description:
 
-        Verifies the validility of a PKCS#7 signed data as described in
+        Verifies the validility of PKCS#7 signed data as described in
         "PKCS #7: Cryptographic Message Syntax Standard". The input
         signed data could be wrapped in a ContentInfo structure.
 
-        If P7Data, RootCert or InData is NULL, then return FALSE.
-        If P7Length, RootCertSize or DataLength overflow, then return FAlSE.
+        If P7Data or InData is NULL, then return FALSE. If P7Length 
+        DataLength overflow, then return FAlSE.
 
-        Caution: This function may receive untrusted input. UEFI Authenticated
-        Variable is external input, so this function will do basic check for
-        PKCS#7 data structure.
+        Caution: This function may receive untrusted input. A UEFI Authenticated
+        Variable is external input, so this function will do basic checking
+        for PKCS#7 data structure.
 
     Arguments:
 
-        P7Data - Pointer to the PKCS#7 message to verify.
+        P7Data - Pointer to the PKCS#7 message to verify
 
-        P7Length - Length of the PKCS#7 message in bytes.
+        P7Length - Length of the PKCS#7 message in bytes
 
-        RootCert - Pointer to a trusted/root certificate encoded in DER,
-                      which is used for certificate chain verification.
+        CertCount - Optional, number of entries in CertList
 
-        RootCertSize - Length of the trusted certificate in bytes.
+        CertList - Pointer certificate list used for verification
 
-        InData - Pointer to the content to be verified.
+        InData - Pointer to the content to be verified
 
-        DataLength - Length of InData in bytes.
+        DataLength - Length of InData in bytes
 
     Returns:
 
@@ -348,23 +435,24 @@ Pkcs7Verify(
 {
     BYTE signature[4096];
     BYTE buffer[1024];
-    BYTE *bytePtr;
+    DecodedCert cert[MAX_DECODED_CERTS];
     wc_Sha256 hashCtx;
-    DecodedCert *cert[MAX_DECODED_CERTS];
-    DecodedCert *certList;
+    BYTE signerSerialNumber[64];
     RsaKey pubKey;
     mp_int mpInt;
-    BYTE signerSerialNumber[64];
+    BYTE *bytePtr = NULL;
     BYTE *signedData = NULL;
-    DecodedCert *match;
+    DecodedCert *certList = NULL;
+    DecodedCert *match = NULL;
     UINTN signedDataSize = 0;
-    UINT32 p = 0; // msg Ptr
+    UINT32 i, p = 0; // msg Ptr 
     UINT32 startOfPtr, endOfPtr;
-    UINT32 i, index, seqLength, setLength;
+    UINT32 count = 0, index = 0;
     UINT32 oidVal, startOfCerts, endOfCerts;
-    UINT32 length, numCerts, certsLength;
-    UINT32 sigLength, signerSerialSize = 64;
-    INT32  matchingCert = -1;
+    UINT32 length, numCerts;
+    INT32 sigLength, signerSerialSize = 64;
+    INT32 seqLength, setLength;
+    INT32 certsLength, matchingCert = -1;
     BOOLEAN wrapped = FALSE;
     BOOLEAN status = FALSE;
 
@@ -384,11 +472,19 @@ Pkcs7Verify(
     }
 
     // Wrap PKCS7 data, if necessary
-    if (!WrapPkcs7Data(P7Data, P7Length, &wrapped, &signedData, &signedDataSize))
-    {
-        status = FALSE;
-        goto Cleanup;
-    }
+    // if (!WrapPkcs7Data(P7Data, P7Length, &wrapped, &signedData, &signedDataSize))
+    // {
+    //     status = FALSE;
+    //     goto Cleanup;
+    // }
+    //
+    // if (wrapped)
+    // {
+    //     // REVISIT: We don't handle this yet
+    // }
+
+    signedData = P7Data;
+    signedDataSize = P7Length;
 
     // REVISIT: Parse this by hand because WolfCrypt cannot (yet)
     //   0:  SignedData ::= SEQUENCE    {
@@ -400,13 +496,11 @@ Pkcs7Verify(
     //   6:    signerInfos SignerInfos  }
 
     // 0:
-    WC_CHECK(GetSequence(signedData, &index, &seqLength, signedDataSize));
-
+    WC_CHECK(GetSequence(signedData, &p, &seqLength, signedDataSize));
 
     // 1: version CMSVersion
-    WC_CHECK(GetInt(&mpInt, signedData, &index, signedDataSize));
+    WC_CHECK(GetInt(&mpInt, signedData, &p, signedDataSize));
     mp_free(&mpInt);
-
 
     // 2: digestAlgorithms DigestAlgorithmIdentifiers
     //    DigestAlgorithmIdentifiers ::= SET OF DigestAlgorithmIdentifier
@@ -424,7 +518,6 @@ Pkcs7Verify(
 
     // Skip to the end of the DigestAlgorithmIdentifiers set
     p = startOfPtr + setLength;
-
 
     // 3: encapContentInfo EncapsulatedContentInfo
     //    EncapsulatedContentInfo ::= SEQUENCE {
@@ -448,11 +541,10 @@ Pkcs7Verify(
         // REVISIT: extract the: eContent[0] EXPLICIT OCTET STRING OPTIONAL
     }
 
-
     // 4: certificates [0] IMPLICIT CertificateSet OPTIONAL
     startOfCerts = GetStartOfVal(signedData, p);
-    bytePtr = signedData[p++];
-    if (bytePtr != (ASN_CONSTRUCTED | ASN_CONTEXT_SPECIFIC))
+    bytePtr = &signedData[p++];
+    if (*bytePtr != (ASN_CONSTRUCTED | ASN_CONTEXT_SPECIFIC))
     {
         status = FALSE;
         goto Cleanup;
@@ -460,12 +552,11 @@ Pkcs7Verify(
 
     // This is the length of the complete cert list
     WC_CHECK(GetLength(signedData, &p, &certsLength, signedDataSize));
-
     endOfCerts = startOfCerts + certsLength;
 
     // REVISIT: Not sure why the length above is wrong
     certsLength += 128;
-    for (i = 0; i < 10; i++)
+    for (count = 0; count < 10; count++)
     {
         // The cert is a SEQUENCE, so find the length of this cert
         startOfPtr = p; // Save p for later..
@@ -476,11 +567,10 @@ Pkcs7Verify(
 
         endOfPtr = p;
         length = seqLength + (endOfPtr - startOfPtr);
-        InitDecodedCert(&cert[i], signedData + startOfPtr, length, 0);
+        InitDecodedCert(&cert[count], signedData + startOfPtr, length, 0);
 
         // Ensure the cert parses
-        // TODO: WE LEAK THESE FREE THEM WHEN DONE!!
-        if (ParseCert(&cert[i], CERT_TYPE, NO_VERIFY, 0))
+        if (ParseCert(&cert[count], CERT_TYPE, NO_VERIFY, 0))
         {
             status = FALSE;
             goto Cleanup;
@@ -511,12 +601,11 @@ Pkcs7Verify(
     else
     {
         certList = cert;
-        numCerts = i;
+        numCerts = count;
     }
 
     // 5: crls [1] IMPLICIT RevocationInfoChoices OPTIONAL
     // REVISIT: Unnecessary right now
-
 
     // 6: signerInfos SignerInfos
     //    SignerInfo ::= SEQUENCE {
@@ -582,11 +671,13 @@ Pkcs7Verify(
     // Get the cert that matches the serial number
     for (i = 0; i < numCerts; i++)
     {
+        // Try matching on size first
         if (signerSerialSize != certList[i].serialSz)
         {
             continue;
         }
 
+        // Sizes match, how about the bytes?
         if (memcmp(signerSerialNumber, certList[i].serial, signerSerialSize) != 0)
         {
             continue;
@@ -594,10 +685,11 @@ Pkcs7Verify(
 
         // We have a match
         matchingCert = i;
+        DMSG("match!!: %x", matchingCert);
         break;
     }
 
-    // We have a match?
+    // Do we have a match?
     if (matchingCert == -1)
     {
         status = FALSE;
@@ -615,43 +707,47 @@ Pkcs7Verify(
     // Now, use the decoded cert to validate the signature
     match = &certList[matchingCert];
     wc_InitRsaKey(&pubKey, NULL);
+
+    index = 0;
     WC_CHECK(wc_RsaPublicKeyDecode(match->publicKey, &index, &pubKey, 8192));
 
     // REVISIT: This operation won't work in a general case. Really need to 
     // do a signature verifification against the Sha256SignatureBlock.
     length = wc_RsaSSL_Verify(signature, sigLength, buffer, sizeof(buffer), &pubKey);
 
+    DMSG("length: %x", length);
+
     // Error or unexpected langth?
-    if ((length < 0) || (length != sizeof(Sha256SignatureBlock)))
+    if (length != sizeof(Sha256SignatureBlock))
     {
         status = FALSE;
         goto Cleanup;
     }
 
+
     // Verify signature
     if (memcmp(Sha256SignatureBlock, buffer, sizeof(Sha256SignatureBlock)))
     {
+    DMSG("FAILED VERIFY");
+
         status = FALSE;
         goto Cleanup;
     }
+    DMSG("!!!!VERIFY!!!!");
 
     // We have a match
     status = TRUE;
 
 Cleanup:
-    if (!wrapped)
-    {
-        TEE_Free(signedData);
-    }
+// REVISIT: UNCOMMENT IF/WHEN WRAPPING IS IMPLEMENTED
+//    if (!wrapped)
+//    {
+//        TEE_Free(signedData);
+//    }
 
-    // If we were not provided a cert list, free decoded certs.
-    // The caller is responsible for the list they provided.
-    if (!(CertCount))
+    for (i = 0; i < count; i++)
     {
-        for (i = 0; i < numCerts; i++)
-        {
-            FreeDecodedCert(cert[i]);
-        }
+        FreeDecodedCert(&(cert[i]));
     }
 
     return status;
@@ -663,7 +759,7 @@ ParseSecurebootVariables(
     PBYTE Data,                 // IN
     UINT32 DataSize,            // IN
     PARSE_SECURE_BOOT_OP Op,    // IN
-    DecodedCert *Certs,           // INOUT
+    CERTIFICATE *Certs,         // INOUT
     PUINT32 NumberOfCerts       // INOUT
 )
 /*++
@@ -700,6 +796,7 @@ ParseSecurebootVariables(
     locationInSigLists = Data;
     locationEnd = Data + DataSize;
 
+    // Validate size
     if (DataSize < sizeof(EFI_SIGNATURE_LIST))
     {
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -718,6 +815,7 @@ ParseSecurebootVariables(
         alloc = FALSE;
         signatureList = (EFI_SIGNATURE_LIST*)locationInSigLists;
 
+        // Sanity check signature list
         status = CheckSignatureList(signatureList, locationEnd, &numberOfEntries);
         if (status != TEE_SUCCESS)
         {
@@ -733,12 +831,15 @@ ParseSecurebootVariables(
         }
         else
         {
-            if ((Op == ParseOpX509) && (memcmp(&signatureList->SignatureType, &EfiCertX509Guid, sizeof(GUID)) == 0))
+            if (Op == ParseOpX509) 
             {
-                numberOfCerts += numberOfEntries;
-                certSize = signatureList->SignatureSize - sizeof(EFI_SIGNATURE_DATA);
-                firstCert = (PBYTE)signatureList + sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_SIGNATURE_DATA);
-                alloc = TRUE;
+                if (!(memcmp(&signatureList->SignatureType, &EfiCertX509Guid, sizeof(GUID))))
+                {
+                    numberOfCerts += numberOfEntries;
+                    certSize = signatureList->SignatureSize - sizeof(EFI_SIGNATURE_DATA);
+                    firstCert = (PBYTE)signatureList + sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_SIGNATURE_DATA);
+                    alloc = TRUE;
+                }
             }
         }
 
@@ -748,7 +849,7 @@ ParseSecurebootVariables(
             {
                 for (i = 0; i < numberOfEntries; i++)
                 {
-                    // TODO: Should be assert
+                    // REVISIT: Should be assert
                     if (!(firstCert))
                     {
                         status = TEE_ERROR_BAD_PARAMETERS;
@@ -816,8 +917,9 @@ ReadSecurebootVariables(
 
 --*/
 {
-    SIZE_T dataSize;
+    PVARIABLE_GET_RESULT result = NULL;
     PBYTE data = NULL;
+    UINT32 size, expectedSize;
     PUEFI_VARIABLE var = NULL;
     TEE_Result status;
     VARTYPE variableType;
@@ -833,22 +935,17 @@ ReadSecurebootVariables(
         goto Cleanup;
     }
 
-    if (!(data = TEE_Malloc(var->DataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
+    expectedSize = sizeof(PVARIABLE_GET_RESULT) + var->DataSize;
+    if (!(result = TEE_Malloc(size, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
     {
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
 
-    status = RetrieveVariable(var, data, &var->DataSize, &dataSize);
-    if ((status != TEE_SUCCESS) || (dataSize != var->DataSize))
+    // TODO: FIX THIS! 2nd ARG is wrong type and 3rd arg is wrong
+    status = RetrieveVariable(var, result, expectedSize, &size);
+    if ((status != TEE_SUCCESS) || (size != expectedSize))
     {
-        goto Cleanup;
-    }
-
-    // Sanity check returned data size
-    if ((UINT32)dataSize != (var->DataSize))
-    {
-        status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
 
@@ -869,7 +966,7 @@ TEE_Result
 PopulateCerts(
     SECUREBOOT_VARIABLE Var1,
     SECUREBOOT_VARIABLE Var2,
-    PDATA_BLOB *Certs,
+    CERTIFICATE **Certs,
     PUINT32 NumberOfCerts
 )
 /*++
@@ -895,7 +992,7 @@ PopulateCerts(
 --*/
 {
     UINT32 count1 = 0, count2 = 0, i, parsedCount, data1Size = 0, data2Size = 0;
-    PDATA_BLOB certs = NULL;
+    CERTIFICATE *certs = NULL;
     PBYTE data1 = NULL, data2 = NULL;
     TEE_Result status;
     BOOLEAN doBoth = FALSE;
@@ -942,10 +1039,10 @@ PopulateCerts(
         }
     }
 
-    certs = TEE_Malloc((sizeof(DecodedCert) * (count1 + count2)), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+    certs = TEE_Malloc((sizeof(CERTIFICATE) * (count1 + count2)), TEE_USER_MEM_HINT_NO_FILL_ZERO);
     if (!certs)
     {
-        DMSG("malloc failed1111 %x", certs);
+        DMSG("malloc failed1111 %lx", (UINTN)certs);
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
@@ -997,11 +1094,15 @@ Cleanup:
 
     if (status != TEE_SUCCESS)
     {
-        for (i = 0; i < (count1 + count2); i++)
+        for (i = 0; i < count1; i++)
         {
-            TEE_Free(certs[i].Data);
+            FreeDecodedCert(&certs[i]);
         }
-        TEE_Free(certs);
+
+        for (i = count1; i < (count1 + count2); i++)
+        {
+            FreeDecodedCert(&certs[i]);
+        }
     }
 
     return status;
@@ -1010,9 +1111,9 @@ Cleanup:
 static
 TEE_Result
 CheckSignatureList(
-    EFI_SIGNATURE_LIST* SignatureList,
-    PBYTE SignatureListEnd,
-    PUINT32 NumberOfEntries
+    EFI_SIGNATURE_LIST* SignatureList,  // IN
+    PBYTE SignatureListEnd,             // IN
+    PUINT32 NumberOfEntries             // IN
 )
 /*++
 
@@ -1038,7 +1139,7 @@ CheckSignatureList(
     UINT32 count;
 
     // Sanity checks on the signature list
-    if (((SignatureListEnd - (PBYTE)SignatureList) < (int) sizeof(EFI_SIGNATURE_LIST))
+    if (((SignatureListEnd - (PBYTE)SignatureList) < (INT_PTR)sizeof(EFI_SIGNATURE_LIST))
         || (((PBYTE)SignatureList + SignatureList->SignatureListSize) < (PBYTE)SignatureList)
         || (((PBYTE)SignatureList + SignatureList->SignatureListSize) > SignatureListEnd))
     {
@@ -1047,8 +1148,8 @@ CheckSignatureList(
         goto Cleanup;
     }
 
-    if ((SignatureList->SignatureListSize == 0)
-        || (SignatureList->SignatureListSize < sizeof(EFI_SIGNATURE_LIST)))
+    if ((SignatureList->SignatureListSize == 0) ||
+        (SignatureList->SignatureListSize < sizeof(EFI_SIGNATURE_LIST)))
     {
         DMSG("FAILED1");
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -1057,7 +1158,7 @@ CheckSignatureList(
 
     count = SignatureList->SignatureListSize - sizeof(EFI_SIGNATURE_LIST);
 
-    if (count == 0 || count % SignatureList->SignatureSize)
+    if ((count == 0) || (count % SignatureList->SignatureSize))
     {
         DMSG("FAILED2");
         status = TEE_ERROR_BAD_PARAMETERS;
@@ -1072,7 +1173,7 @@ CheckSignatureList(
     }
 
     *NumberOfEntries = (SignatureList->SignatureListSize - sizeof(EFI_SIGNATURE_LIST)) /
-        SignatureList->SignatureSize;
+                                        SignatureList->SignatureSize;
 
 Cleanup:
     return status;
@@ -1081,189 +1182,38 @@ Cleanup:
 static
 TEE_Result
 CheckForDuplicateSignatures(
-    PCUEFI_VARIABLE Var,
-    PBYTE Data,
-    UINT32 DataSize,
-    PBOOLEAN DuplicatesFound,
-    BYTE** NewData,
-    PUINT32 NewDataSize
+    PCUEFI_VARIABLE Var,            // IN
+    BYTE *Data,                     // IN
+    UINT32 DataSize,                // IN
+    BOOLEAN *DuplicatesFound,       // OUT
+    BYTE **NewData,                 // OUT
+    UINT32 *NewDataSize             // OUT
 )
-/*++
-
-    Routine Description:
-
-        Function to check for duplicates while appending db/dbx.
-
-        Per UEFI 2.3.1, duplicate signatures to be stripped from data before appending existing content
-
-    Arguments:
-
-        Var - A pointer to an inmemory representation of the variable
-
-        Data - Data being appended to Var
-
-        DataSize - Size in bytes of Data
-
-        DuplicatesFound - TRUE if duplicates were found in Data
-
-        NewData - supplies a pointer containing data after redundant signatures are removed
-
-        NewDataSize - Size in bytes of NewData
-
-    Returns:
-
-        Status Code
-
---*/
+// REVISIT: We may no longer need this function
 {
-    PBYTE data, newData = NULL, nextCert, locationInSigLists, locationEnd, certEntry;
-    SIZE_T dataSize;
-    PDATA_BLOB existingCerts = NULL;
-    UINT32 existingNumberOfCerts, newDataSize = 0, certSize, numberOfEntries, i, j;
-    EFI_SIGNATURE_LIST* signatureList;
-    TEE_Result status;
-    BOOLEAN duplicatesFound = FALSE;
+    UNUSED_PARAMETER(Var);
+    UNUSED_PARAMETER(Data);
+    UNUSED_PARAMETER(DataSize);
+    UNUSED_PARAMETER(NewData);
+    UNUSED_PARAMETER(NewDataSize);
 
-    // First, read the variable from non volatile storage.
-    if (!(data = TEE_Malloc(Var->DataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
-    {
-        DMSG("FAILED: Malloc");
-        status = TEE_ERROR_OUT_OF_MEMORY;
-        goto Cleanup;
-    }
+    *DuplicatesFound = FALSE;
 
-    status = RetrieveVariable(Var, data, Var->DataSize, &dataSize);
-    if ((status != TEE_SUCCESS) || ((UINT32)dataSize != (Var->DataSize)))
-    {
-        DMSG("FAILED: RetrieveVariable");
-        status = TEE_ERROR_BAD_PARAMETERS;
-        goto Cleanup;
-    }
-
-    status = ParseSecurebootVariables(data, Var->DataSize, ParseOpAll, NULL, &existingNumberOfCerts);
-    if ((status != TEE_SUCCESS) || (existingNumberOfCerts == 0))
-    {
-        DMSG("FAILED: ParseSecurebootVariables");
-        status = TEE_ERROR_BAD_PARAMETERS;
-        goto Cleanup;
-    }
-
-    existingCerts = TEE_Malloc(existingNumberOfCerts * sizeof(DATA_BLOB), TEE_USER_MEM_HINT_NO_FILL_ZERO);
-    if (!existingCerts)
-    {
-        DMSG("FAILED: Malloc2");
-        status = TEE_ERROR_OUT_OF_MEMORY;
-        goto Cleanup;
-    }
-
-    status = ParseSecurebootVariables(data, Var->DataSize, ParseOpAll, existingCerts, &existingNumberOfCerts);
-    if (status != TEE_SUCCESS)
-    {
-        DMSG("FAILED: ParseSecurebootVariables");
-        goto Cleanup;
-    }
-
-    // Parse certificates from the signature lists in Data
-    newDataSize = DataSize;
-
-    newData = TEE_Malloc(newDataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO);
-
-    memmove(newData, Data, newDataSize);
-
-    locationInSigLists = newData;
-    locationEnd = newData + newDataSize;
-
-    while (locationInSigLists < locationEnd)
-    {
-
-        signatureList = (EFI_SIGNATURE_LIST*)locationInSigLists;
-
-        status = CheckSignatureList(signatureList, locationEnd, &numberOfEntries);
-        if (status != TEE_SUCCESS)
-        {
-            goto Cleanup;
-        }
-
-        certSize = signatureList->SignatureSize;
-
-        for (i = 0; i < numberOfEntries; i++)
-        {
-            certEntry = (PBYTE)signatureList + sizeof(EFI_SIGNATURE_LIST) + (i * signatureList->SignatureSize);
-
-
-            // Check if this is present in the existing certificates
-            for (j = 0; j < existingNumberOfCerts; j++)
-            {
-
-                if ((certSize == existingCerts[j].Size) && (memcmp(certEntry, existingCerts[j].Data, certSize) == 0))
-                {
-                    duplicatesFound = TRUE;
-
-                    // Remove this from this Signature list and reduce its size
-                    // Update locationEnd too
-                    nextCert = certEntry + certSize;
-
-                    // All certs ahead are brought ahead by one location, and the size is updated.
-                    memmove(certEntry, nextCert, (locationEnd - nextCert));
-
-                    // Current sig list size is reduced.
-                    // Also the overall size of the aggregated list also reduces.
-                    locationEnd -= certSize;
-                    signatureList->SignatureListSize -= certSize;
-                    newDataSize -= certSize;
-
-                    numberOfEntries--;
-                    i--;
-                    break;
-                }
-            }
-        }
-
-        locationInSigLists += signatureList->SignatureListSize;
-    }
-
-    if (locationInSigLists != locationEnd)
-    {
-        DMSG("FAILED %x (locationInSigLists)!= %x (locationEnd)", locationInSigLists, locationEnd);
-        status = TEE_ERROR_BAD_PARAMETERS;
-        goto Cleanup;
-    }
-
-    //
-    // If the list is not changing, then we can safely use the already existing content.
-    // If duplicates were found, it is necessary to pass this new buffer so that the input buffer is unchanged.
-    // This new buffer is freed after writing to non volatile storage.
-    //
-
-    if (!duplicatesFound)
-    {
-        TEE_Free(newData);
-        newData = NULL;
-        newDataSize = 0;
-    }
-
-    *NewData = newData;
-    *NewDataSize = newDataSize;
-    *DuplicatesFound = duplicatesFound;
-
-Cleanup:
-    TEE_Free(data);
-
-    return status;
+    return TEE_SUCCESS;
 }
 
 TEE_Result
 AuthenticateSetVariable(
-    PCUNICODE_STRING         UnicodeName,
-    PGUID                    VendorGuid,
-    PCUEFI_VARIABLE          Var,
-    ATTRIBUTES               Attributes,
-    PBYTE                    Data,
-    UINT32                   DataSize,
-    PEXTENDED_ATTRIBUTES     ExtendedAttributes,
-    PBOOLEAN                 DuplicateFound,
-    PBYTE                   *Content,
-    PUINT32                  ContentSize
+    PCUNICODE_STRING         UnicodeName,           // IN
+    PGUID                    VendorGuid,            // IN
+    PCUEFI_VARIABLE          Var,                   // IN
+    ATTRIBUTES               Attributes,            // IN
+    PBYTE                    Data,                  // IN
+    UINT32                   DataSize,              // IN
+    PEXTENDED_ATTRIBUTES     ExtendedAttributes,    // IN
+    PBOOLEAN                 DuplicateFound,        // IN
+    PBYTE                   *Content,               // OUT
+    PUINT32                  ContentSize            // OUT
 )
 /*++
 
@@ -1312,7 +1262,7 @@ AuthenticateSetVariable(
     BOOLEAN isDeleteOperation = FALSE;
 
     DMSG("authset: DataSize: %x", DataSize);
-    DMSG("authset: Data: %x", Data);
+    DMSG("authset: Data: %p", Data);
 
     // Is this a delete operation?
     if (!DataSize)
@@ -1327,8 +1277,8 @@ AuthenticateSetVariable(
             isDeleteOperation = TRUE;
             DataSize = Var->DataSize;
             DMSG("newDS: %x", DataSize);
-            Data = Var->BaseAddress + Var->DataOffset;
-            DMSG("newdata: %x", Data);
+            Data = (PBYTE)(Var->BaseAddress + Var->DataOffset);
+            DMSG("newdata: %p", Data);
         }
     }
 
@@ -1386,8 +1336,6 @@ AuthenticateSetVariable(
     //    }
     //}
 
-
-
     // If we have a time field, make sure it is updated (unless this is an append)
     if ((Attributes.AppendWrite) || (Var == NULL))
     {
@@ -1398,7 +1346,7 @@ AuthenticateSetVariable(
         // REVISIT: This should be an assert
         if (!(Var->ExtAttribOffset))
         {
-            DMSG("ASSERT ExtAttribOffset: %x", Var->ExtAttribOffset);
+            DMSG("ASSERT ExtAttribOffset: %lx", Var->ExtAttribOffset);
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
@@ -1414,7 +1362,7 @@ AuthenticateSetVariable(
         status = VerifyTime(&efiTime, prevEfiTime);
         if (status != TEE_SUCCESS)
         {
-            DMSG("FAILED VerifyTime", Var->ExtAttribOffset);
+            DMSG("FAILED VerifyTime %lx", (UINTN)Var->ExtAttribOffset);
             goto Cleanup;
         }
     }
@@ -1438,6 +1386,7 @@ AuthenticateSetVariable(
 
     DMSG("Malloc dataToVerifySize: %x", dataToVerifySize);
 
+    // Allocate buffer for use during verification
     if (!(dataToVerify = TEE_Malloc(dataToVerifySize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
     {
         status = TEE_ERROR_OUT_OF_MEMORY;
@@ -1445,8 +1394,8 @@ AuthenticateSetVariable(
         goto Cleanup;
     }
 
+    // Construct verification buffer
     index = 0;
-
     memmove(dataToVerify + index, UnicodeName->Buffer, UnicodeName->Length);
     index += UnicodeName->Length;
 
@@ -1501,6 +1450,8 @@ AuthenticateSetVariable(
             DMSG("FAILED SecureBootVarAuth %x", status);
             goto Cleanup;
         }
+        DMSG("ret from SecureBootVarAuth %x", status);
+
     }
     else
     {
@@ -1536,12 +1487,19 @@ AuthenticateSetVariable(
         *ContentSize = dataSize;
     }
 
+    DMSG("BEFORE dup");
+
     *DuplicateFound = duplicatesFound;
+    DMSG("after dup before memset");
 
     memset(ExtendedAttributes, 0, sizeof(EXTENDED_ATTRIBUTES));
+    DMSG("maybe time");
+
     ExtendedAttributes->EfiTime = efiTime;
+    DMSG("hnope");
 
 Cleanup:
+    DMSG("out");
     return status;
 }
 
@@ -1619,10 +1577,6 @@ ValidateParameters(
     efiVarAuth2 = (EFI_VARIABLE_AUTHENTICATION_2*)Data;
     winCertUefiGuid = (WIN_CERTIFICATE_UEFI_GUID *)&efiVarAuth2->AuthInfo;
 
-    DMSG("eviFarAuth2: %x", efiVarAuth2);
-    DMSG("winCertUefiGuid->CertType: %x", winCertUefiGuid->CertType);
-    DMSG("EfiCertTypePKCS7Guid: %x", EfiCertTypePKCS7Guid);
-
     if (memcmp(&winCertUefiGuid->CertType, &EfiCertTypePKCS7Guid, sizeof(GUID)) != 0)
     {
         DMSG("certtype?");
@@ -1665,6 +1619,7 @@ ValidateParameters(
     }
 
     status = TEE_SUCCESS;
+    
 Cleanup:
     return status;
 }
@@ -1714,15 +1669,14 @@ SecureBootVarAuth(
            - The serialized stream of the UEFI variable info + payload data.
 --*/
 {
-    DecodedCert *certs = NULL;
-    ULONG numberOfCerts = 0, i;
     SECUREBOOT_VARIABLE var2 = SecureBootVariableEnd;
-    BOOLEAN verifyStatus = FALSE;
-    UINT8   *signerCerts = NULL;
-    UINT8   *rootCert = NULL;
-    UINT32  rootCertSize;
-    UINT32  signerCertStackSize;
+    DecodedCert *certs = NULL;
+    UINT32 numberOfCerts = 0, i;
     TEE_Result status;
+    BOOLEAN verifyStatus = FALSE;
+
+    UNUSED_PARAMETER(Data);
+    UNUSED_PARAMETER(DataSize);
 
     if ((Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX))
     {
@@ -1734,17 +1688,14 @@ SecureBootVarAuth(
     // ASSERT((Id == SecureBootVariablePK) || (Id == SecureBootVariableKEK) ||
     //     (Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX));
 
-    //
     // Perform signature validation and check if we trust the signing certificate
-    //
     DMSG("inhere");
-
     if (SecureBootInUserMode)
     {
         DMSG("SecureBootInUserMode");
 
         status = PopulateCerts(SecureBootVariablePK, var2, &certs, (PUINT32)&numberOfCerts);
-        DMSG("PopulateCerts: %x, certs: %x", status, certs);
+        DMSG("PopulateCerts: %x, certs: %p", status, certs);
 
         if (status != TEE_SUCCESS)
         {
@@ -1795,6 +1746,9 @@ SecureBootVarAuth(
             status = TEE_ERROR_ACCESS_DENIED;
             goto Cleanup;
         }
+
+        // Switch from setup mode
+        SecureBootInUserMode = TRUE;
     }
     else
     {
@@ -1879,8 +1833,6 @@ VerifyTime(
 
 --*/
 {
-    TEE_Result status = TEE_SUCCESS;
-
     // Some validation on FirstTime
     if ((FirstTime->Pad1 != 0) ||
         (FirstTime->Nanosecond != 0) ||
@@ -1911,8 +1863,8 @@ VerifyTime(
 static
 BOOLEAN
 IsBefore(
-    EFI_TIME    *FirstTime,
-    EFI_TIME    *SecondTime
+    EFI_TIME *FirstTime,        // IN
+    EFI_TIME *SecondTime        // IN
 )
 {
     if (FirstTime->Year != SecondTime->Year)

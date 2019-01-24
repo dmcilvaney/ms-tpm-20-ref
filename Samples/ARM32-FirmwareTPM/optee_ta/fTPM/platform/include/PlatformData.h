@@ -118,7 +118,7 @@ extern unsigned char s_locality;
 #   define      FILE_BACKED_NV          NO
 #endif // SIMULATION
 
-extern unsigned char     s_NV[];
+extern unsigned char     *s_NV;
 extern BOOL              s_NvIsAvailable;
 
 // For PPPlat.c
