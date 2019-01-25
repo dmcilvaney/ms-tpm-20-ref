@@ -288,8 +288,8 @@ GetNextVariableName(
     UINT32 size, i;
     TEE_Result status;
     VARTYPE varType;
+    USHORT varNameLen;
 
-    DMSG("GetNextVariable");
 
     // Validate parameters
     if (!(GetNextParam) || !(GetNextResult) || (GetNextParamSize < sizeof(VARIABLE_GET_NEXT_PARAM)))
@@ -315,12 +315,18 @@ GetNextVariableName(
         goto Cleanup;
     }
 
+    // Init local name string
+    memset(&unicodeName, 0, sizeof(unicodeName));
+
+    // Pickup (name,guid)
+    varNameLen = GetNextParam->NameSize;
+    vendorGuid = GetNextParam->VendorGuid;
 
     // Init for search
     nextVar = NULL;
 
     // Is this the first request?
-    if (GetNextParam->NameSize == 0)
+    if (!varNameLen)
     {
         // Yes, return first variable that can be found in any list
         for (i = 0; i < ARRAY_SIZE(VarInfo); i++)
@@ -336,16 +342,15 @@ GetNextVariableName(
     else
     {
         // Validation on name length (we already know it's non-zero)
-        if (GetNextParam->NameSize % sizeof(WCHAR))
+        if (varNameLen % sizeof(WCHAR))
         {
-            EMSG("Get next variable error: unaligned name");
             status = TEE_ERROR_BAD_PARAMETERS;
             goto Cleanup;
         }
 
-        // Guard against overflow with name string
-        if (((GetNextParam->NameSize + sizeof(VARIABLE_GET_NEXT_PARAM)) < GetNextParam->NameSize) ||
-            (GetNextParamSize < (sizeof(VARIABLE_GET_PARAM) + GetNextParam->NameSize)))
+        // Guard against overflow
+        if (((varNameLen + sizeof(VARIABLE_GET_NEXT_PARAM)) < varNameLen) ||
+            (GetNextParamSize < (sizeof(VARIABLE_GET_NEXT_PARAM) + varNameLen)))
         {
             EMSG("Get next variable error: Overflow on name string length");
             status = TEE_ERROR_BAD_PARAMETERS;
@@ -362,7 +367,7 @@ GetNextVariableName(
         unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
         unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
 
-        if(unicodeName.MaximumLength > GetNextParam->NameSize)
+        if(unicodeName.MaximumLength > varNameLen)
         {
             EMSG("Get next variable error: Name not null terminated");
             status = TEE_ERROR_BAD_PARAMETERS;

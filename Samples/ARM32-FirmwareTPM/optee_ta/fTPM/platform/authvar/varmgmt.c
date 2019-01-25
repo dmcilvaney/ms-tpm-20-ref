@@ -63,48 +63,52 @@ VTYPE_INFO VarInfo[VTYPE_END] =
 
 LIST_ENTRY MemoryReclamationList = {0};
 
-//
 // Offsets/ptrs for NV vriable storage
-//
 static UINT_PTR s_nextFree = NV_AUTHVAR_START;
 static const UINT_PTR s_nvLimit = NV_AUTHVAR_START + NV_AUTHVAR_SIZE;
 
-//
 // Handy empty GUID const
-//
 GUID GUID_NULL = { 0, 0, 0,{ 0, 0, 0, 0, 0, 0, 0, 0 } };
 
 //
 // Memory Management Prototypes
 //
+
+static
 VOID
 TrackOffset(
-    PUEFI_VARIABLE pVar
+    PUEFI_VARIABLE pVar             // IN
 );
 
+static
 VOID
 UpdateOffsets(
-    UINT_PTR NVOffset,
-    UINT32 ShrinkAmount
+    UINT_PTR NVOffset,              // IN
+    UINT32 ShrinkAmount             // IN
 );
 
+static
 VOID
-DumpAuthvarMemoryImpl(VOID);
-
-VOID
-MergeAdjacentNodes (
-    PUEFI_VARIABLE FirstNode
+DumpAuthvarMemoryImpl(
+    VOID
 );
 
+static
+VOID
+MergeAdjacentBlocks (
+    PUEFI_VARIABLE FirstElement     // IN
+);
+
+static
 BOOLEAN
-ReclaimNode(
-    PUEFI_VARIABLE Node
+ReclaimVariable(
+    PUEFI_VARIABLE pVar             // IN
 );
 
 UINT32
 AuthVarInitStorage(
-    UINT_PTR StartingOffset,
-    BOOLEAN ReInitialize
+    UINT_PTR StartingOffset,        // IN
+    BOOLEAN ReInitialize            // IN
 );
 
 //
@@ -122,58 +126,54 @@ CompareEntries(
 static
 BOOLEAN
 GetVariableType(
-    PCWSTR      VarName,    // IN
-    PCGUID      VendorGuid, // IN
-    ATTRIBUTES  Attributes, // IN
-    PVARTYPE    VarType     // OUT
+    PCWSTR      VarName,            // IN
+    PCGUID      VendorGuid,         // IN
+    ATTRIBUTES  Attributes,         // IN
+    PVARTYPE    VarType             // OUT
 );
 
 static
 BOOLEAN
 IsSecureBootVar(
-    PCWSTR  VarName,        // IN
-    PCGUID  VendorGuid      // IN
+    PCWSTR  VarName,                // IN
+    PCGUID  VendorGuid              // IN
 );
 
 //
 // Auth Var Storage Maintenance Functions
-//
-
-/**
- * Memory Management:
- * 
- * When a variable is deleted or shrunk it will leave gaps. These gaps
- * are cleared during initialization of the NV memory.
- * 
- * Each node has an actual size, and an allocated size (alligned). The
- * NV backed byte array (s_NV) is iterated through to find each node.
- * 
- * A variable's data may be spread across multiple nodes via a linked
- * list. This list is represented via relative offset values in each node.
- * 
- * For each node:
- *      - Previous runs of the memory reclamation code may have removed
- *          a variable which broke another variable into multiple node.
- *          Merge these adjacent node into a single large node.
- *      - Is the space used by the current node smaller than the 
- *          allocated space (not less than min alignment)?
- *      - Or has the variable been deleted?
- *      - If yes to either then find the next variable, skipping over
- *          deleted variables along the way.
- *      - Move the next (non-deleted) node forward into the free space.
- *      - Increase the allocation size of that node so there is no
- *          gap left. When the node is processed that gap will be
- *          closed.
- *      - If the current node has a NextOffset link to another node
- *          in the list:
- *              - Keep track of the current node so its offset can be
- *                  updated if the next node is moved forwards.
- *      - Check the list of tracked node to see if any were linked
- *          to the next node (which we may have just moved into reclaimed space),
- *          if so update the link and remove them from the list since 
- *          the next block has reached it's final location.
- */
-
+// 
+// A note on memory management:
+// 
+// When a variable is deleted or shrunk it will leave gaps. These gaps
+// are cleared during initialization of the NV memory on device startup.
+// 
+// Each node has an actual size, and an allocated size (aligned). The
+// NV backed byte array (s_NV) is iterated through to find each block.
+// 
+// A variable's data may be spread across multiple blocks via a linked
+// list. This list is represented via relative offset values in each block.
+// 
+// For each block:
+//  1.  Previous runs of the memory reclamation code may have removed a
+//      variable which broke another variable into multiple blocks. Merge
+//      these adjacent blocks into a single large block.
+//  2.  Is the space used by the current block smaller than the 
+//      allocated space (not less than min alignment)?
+//  2a. Or has the variable been deleted? If yes to either then find
+//      the next variable, skipping over deleted variables along the way.
+//  3.  Move the next (non-deleted) block forward into the free space.
+//  4.  Increase the allocation size of that block so there is no gap
+//      left. When the block is processed that gap will be closed.
+//  5.  If the current block has a NextOffset link to another node
+//      in a list:
+//          o Keep track of the current node so the offset can be
+//            updated if the next node is moved forwards.
+//  6.  Check the list of tracked blocks to see if any were linked
+//      to the next block, if so update the link and remove them
+//      from the list since the next block has reached it's final
+//      location.
+// 
+//  TODO: Merge linked blocks as we find them
 CHAR*
 CovnertWCharToChar( WCHAR *Unicode, CHAR *Ascii, UINT32 AsciiBufferLength) {
     CHAR *returnPtr = Ascii;
@@ -269,6 +269,7 @@ DumpAuthvarMemoryImpl(VOID)
 }
 #endif
 
+static
 VOID
 UpdateOffsets(
     UINT_PTR NVOffset,
@@ -572,8 +573,8 @@ ReclaimNode(
 
 UINT32
 AuthVarInitStorage(
-    UINT_PTR StartingOffset,
-    BOOLEAN ReInitialize
+    UINT_PTR StartingOffset,        // IN
+    BOOLEAN ReInitialize            // IN
 )
 /*++
 
@@ -797,12 +798,12 @@ SearchList(
 
 TEE_Result
 CreateVariable(
-    PCUNICODE_STRING        UnicodeName,
-    PCGUID                  VendorGuid,
-    ATTRIBUTES              Attributes,
-    PEXTENDED_ATTRIBUTES    ExtAttributes,
-    UINT32                  DataSize,
-    PBYTE                   Data
+    PCUNICODE_STRING        UnicodeName,        // IN
+    PCGUID                  VendorGuid,         // IN
+    ATTRIBUTES              Attributes,         // IN
+    PEXTENDED_ATTRIBUTES    ExtAttributes,      // IN
+    UINT32                  DataSize,           // IN
+    PBYTE                   Data                // IN
 )
 /*++
 

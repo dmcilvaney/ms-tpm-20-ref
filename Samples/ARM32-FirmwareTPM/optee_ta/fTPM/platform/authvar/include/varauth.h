@@ -45,6 +45,8 @@
 #include <wolfssl/wolfcrypt/rsa.h>
 #include <wolfssl/wolfcrypt/pkcs7.h>
 
+typedef DecodedCert CERTIFICATE, *PCERTIFICATE;
+
 //
 // The WIN_CERTIFICATE structure is part of the PE/COFF specification.
 //
@@ -100,7 +102,7 @@ typedef struct _WIN_CERTIFICATE_UEFI_GUID
 
     //
     // This is the unique id which determines the
-    // format of the CertData. .
+    // format of the CertData.
     //
 
     GUID CertType;
@@ -129,7 +131,7 @@ typedef struct _EFI_SIGNATURE_DATA
     //
     // The format of the signature is defined by the SignatureType.
     //
-    //UINT8 SignatureData[1];
+    // UINT8 SignatureData[1];
 
 } EFI_SIGNATURE_DATA;
 #pragma pack(pop)
@@ -140,32 +142,33 @@ typedef struct _EFI_SIGNATURE_LIST
     //
     // Type of the signature. GUID signature types are defined in below.
     //
-
     GUID SignatureType;
+
     //
     // Total size of the signature list, including this header.
     //
-
     UINT32 SignatureListSize;
+
     //
     // Size of the signature header which precedes the array of signatures.
     //
-
     UINT32 SignatureHeaderSize;
+
     //
     // Size of each signature.
     //
-
     UINT32 SignatureSize;
+
     //
     // Header before the array of signatures. The format of this header is specified
     // by the SignatureType.
-    // UINT8           SignatureHeader[SignatureHeaderSize];
+    //
+    // UINT8 SignatureHeader[SignatureHeaderSize];
+
     //
     // An array of signatures. Each signature is SignatureSize bytes in length.
-    // EFI_SIGNATURE_DATA Signatures[][SignatureSize];
     //
-
+    // EFI_SIGNATURE_DATA Signatures[][SignatureSize];
 } EFI_SIGNATURE_LIST;
 #pragma pack(pop)
 
@@ -181,13 +184,11 @@ typedef struct _EFI_VARIABLE_AUTHENTICATION_2
     // For the TimeStamp value, components Pad1, Nanosecond, TimeZone, Daylight and
     // Pad2 shall be set to 0. This means that the time shall always be expressed in GMT.
     //
-
     EFI_TIME TimeStamp;
 
     //
     // Only a CertType of  EFI_CERT_TYPE_PKCS7_GUID is accepted.
     //
-
     WIN_CERTIFICATE_UEFI_GUID AuthInfo;
 } EFI_VARIABLE_AUTHENTICATION_2;
 #pragma pack(pop)
