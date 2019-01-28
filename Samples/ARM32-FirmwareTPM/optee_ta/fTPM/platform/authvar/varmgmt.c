@@ -355,8 +355,8 @@ TrackOffset(
         TEE_Panic(TEE_ERROR_OUT_OF_MEMORY);
     }
 
-    newReclamationNode->VariableBlock = Node;
-    newReclamationNode->NV_Offset = (UINT_PTR)Node + Node->NextOffset - (UINT_PTR)s_NV;
+    newReclamationNode->VariableBlock = Block;
+    newReclamationNode->NV_Offset = (UINT_PTR)Block + Block->NextOffset - (UINT_PTR)s_NV;
     InsertTailList(&MemoryReclamationList, &(newReclamationNode->List));
     FMSG("Tracking a variable which points to 0x%lx", newReclamationNode->NV_Offset + (UINT_PTR)s_NV);
 }
