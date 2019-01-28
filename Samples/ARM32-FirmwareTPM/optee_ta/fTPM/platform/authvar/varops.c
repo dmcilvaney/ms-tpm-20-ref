@@ -535,6 +535,7 @@ SetVariable(
     data = &SetParam->Payload[SetParam->OffsetData];
 
     // Don't consider NULL character in Length
+    memset(&unicodeName, 0, sizeof(unicodeName));
     unicodeName.Buffer = varName;
     unicodeName.Length = wcslen(unicodeName.Buffer) * sizeof(WCHAR);
     unicodeName.MaximumLength = unicodeName.Length + sizeof(WCHAR);
