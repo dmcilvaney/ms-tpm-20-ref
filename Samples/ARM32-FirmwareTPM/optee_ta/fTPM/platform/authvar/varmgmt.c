@@ -141,39 +141,52 @@ IsSecureBootVar(
 
 //
 // Auth Var Storage Maintenance Functions
-// 
+//
+
 // A note on memory management:
-// 
-// When a variable is deleted or shrunk it will leave gaps. These gaps
-// are cleared during initialization of the NV memory on device startup.
-// 
-// Each node has an actual size, and an allocated size (aligned). The
-// NV backed byte array (s_NV) is iterated through to find each block.
-// 
-// A variable's data may be spread across multiple blocks via a linked
-// list. This list is represented via relative offset values in each block.
-// 
-// For each block:
+//
+// Non-volatile variables are stored as UEFI_VARIABLE structs of variable
+// size inside the s_NV byte array. When appending or replacing data it may be
+// necessary to link additional UEFI_VARIABLE structs to form a list. These
+// additional nodes (blocks) omit some of the meta data stored in the head block.
+//
+// If a variable's data is spread across multiple blocks via a linked
+// list, this list is represented via relative offset values in each block.
+//
+// Each block has an actual size, and an allocated size (aligned).
+// During initialization the NV backed byte array (s_NV) is iterated 
+// through to find each block.
+//
+// When a variable is deleted or shrunk it will leave gaps in s_NV. These gaps
+// are cleared during a re-initialization of the NV memory when space runs
+// low. Normal operation will leave deleted elements in place to improve
+// boot times.
+//
+// For each block during re-initialization:
 //  1.  Previous runs of the memory reclamation code may have removed a
-//      variable which broke another variable into multiple blocks. Merge
+//      variable which broke another variable into multiple block. Merge
 //      these adjacent blocks into a single large block.
 //  2.  Is the space used by the current block smaller than the 
 //      allocated space (not less than min alignment)?
-//  2a. Or has the variable been deleted? If yes to either then find
-//      the next variable, skipping over deleted variables along the way.
-//  3.  Move the next (non-deleted) block forward into the free space.
-//  4.  Increase the allocation size of that block so there is no gap
-//      left. When the block is processed that gap will be closed.
-//  5.  If the current block has a NextOffset link to another node
-//      in a list:
-//          o Keep track of the current node so the offset can be
-//            updated if the next node is moved forwards.
-//  6.  Check the list of tracked blocks to see if any were linked
-//      to the next block, if so update the link and remove them
-//      from the list since the next block has reached it's final
-//      location.
-// 
-//  TODO: Merge linked blocks as we find them
+//  2a. Or has the variable been deleted?
+//          o If no to both, do nothing and move to the next block in memory.
+//  3.  Otherwise find the next variable, skipping over additional deleted
+//      blocks along the way.
+//  4.  Move the next (non-deleted) block forward into the free space.
+//  5.  Increase the allocation size of that block so there is no gap
+//      left. When the moved block is processed in the next iteration that
+//      gap will be closed.
+//  6.  If the current block has a NextOffset link to another block
+//      in the variable's list:
+//          o Keep track of the current block so the offset can be
+//            updated if the next block is moved forwards in a future
+//            iteration.
+//  7.  Check the list of tracked blocks to see if any were linked
+//      to the next block which was just moved.
+//          o If so, update the link and remove them from the list
+//            since the next block has reached its final location.
+//
+
 CHAR*
 CovnertWCharToChar( WCHAR *Unicode, CHAR *Ascii, UINT32 AsciiBufferLength) {
     CHAR *returnPtr = Ascii;
