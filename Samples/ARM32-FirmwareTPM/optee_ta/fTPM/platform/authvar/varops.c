@@ -288,7 +288,7 @@ GetNextVariableName(
     UINT32 size, i;
     TEE_Result status;
     VARTYPE varType;
-    USHORT varNameLen;
+    UINT16 varNameLen;
 
 
     // Validate parameters
@@ -315,12 +315,7 @@ GetNextVariableName(
         goto Cleanup;
     }
 
-    // Init local name string
-    memset(&unicodeName, 0, sizeof(unicodeName));
-
-    // Pickup (name,guid)
     varNameLen = GetNextParam->NameSize;
-    vendorGuid = GetNextParam->VendorGuid;
 
     // Init for search
     nextVar = NULL;
