@@ -642,7 +642,7 @@ SetVariable(
         {
             DMSG("Deleting variable");
             RemoveEntryList((PLIST_ENTRY) varPtr);
-            status = DeleteNodes(varPtr);
+            status = DeleteBlocks(varPtr);
             goto Cleanup;
         }
 

@@ -37,7 +37,7 @@
 typedef struct _MEMORY_RECLAMATION_NODE
 {
     LIST_ENTRY List;                // Flink/Blink
-    PUEFI_VARIABLE VariableNode;    // UEFI Variable node
+    PUEFI_VARIABLE VariableBlock;    // UEFI Variable block
     UINT_PTR NV_Offset;             // The offset into NV being tracked
 } MEMORY_RECLAMATION_NODE, *PMEMORY_RECLAMATION_NODE;
 
@@ -68,7 +68,7 @@ CreateVariable(
 );
 
 TEE_Result
-DeleteNodes(
+DeleteBlocks(
     PUEFI_VARIABLE  Tail
 );
 
