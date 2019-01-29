@@ -67,6 +67,9 @@ LIST_ENTRY MemoryReclamationList = {0};
 static UINT_PTR s_nextFree = NV_AUTHVAR_START;
 static const UINT_PTR s_nvLimit = NV_AUTHVAR_START + NV_AUTHVAR_SIZE;
 
+// Track current volatile memory usage
+static UINT32 s_currentVolatileSize = 0;
+
 // Handy empty GUID const
 GUID GUID_NULL = { 0, 0, 0,{ 0, 0, 0, 0, 0, 0, 0, 0 } };
 
@@ -855,6 +858,8 @@ CreateVariable(
     if (!(Attributes.NonVolatile))
     {
         DMSG("Creating volatile variable");
+        UINT32 requiredSize = 0;
+        
         // Validate length
         if (DataSize == 0)
         {
@@ -863,6 +868,16 @@ CreateVariable(
             //       that bridge when we come to it.
             status = TEE_ERROR_BAD_PARAMETERS;
             EMSG("Create volatile variable error: Bad parameters.");
+            goto Cleanup;
+        }
+
+        requiredSize = sizeof(UEFI_VARIABLE) + UnicodeName->MaximumLength + DataSize;
+
+        // Check if there is enough volatile memory set aside
+        if(s_currentVolatileSize + requiredSize > MAX_VOLATILE_STORAGE)
+        {
+            status = TEE_ERROR_OUT_OF_MEMORY;
+            EMSG("Create volatile variable error: Exceeds volatile variable max allocation.");
             goto Cleanup;
         }
 
@@ -913,6 +928,10 @@ CreateVariable(
         newVar->DataSize = DataSize;
         newVar->DataOffset = (UINT_PTR)newData;
         memmove(newData, Data, DataSize);
+
+        // Track how much volatile memory is being used
+        newVar->AllocSize = requiredSize;
+        s_currentVolatileSize += newVar->AllocSize;
 
         // Note the lack of a check against ExtendedAttributes.
         // We do not implement authenticated volatile variables.
@@ -1185,9 +1204,15 @@ DeleteBlocks(
     if (!(Tail->Attributes.NonVolatile))
     {
         FMSG("Volatile delete");
+        s_currentVolatileSize -= Tail->AllocSize;
         TEE_Free((PBYTE)Tail->DataOffset);
         TEE_Free((PBYTE)Tail->NameOffset);
         TEE_Free((PBYTE)Tail);
+
+        if (s_currentVolatileSize > MAX_VOLATILE_STORAGE) {
+            EMSG("Volatile variable size underflow!");
+            TEE_Panic(TEE_ERROR_BAD_STATE);
+        }
     } else {
         FMSG("Non-volatile delete");
         do {
@@ -1250,6 +1275,14 @@ AppendVariable(
         // TODO: CHECK FOR OVERFLOW
         newSize = Var->DataSize + DataSize;
 
+        // Check if there is enough volatile memory set aside
+        if(s_currentVolatileSize + DataSize > MAX_VOLATILE_STORAGE)
+        {
+            EMSG("Volatile append error: Exceeds volatile variable max allocation.");
+            status = TEE_ERROR_OUT_OF_MEMORY;            
+            goto Cleanup;
+        }
+
         // Attempt allocation
         if (!(dstPtr = TEE_Malloc(newSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
         {
@@ -1270,6 +1303,10 @@ AppendVariable(
         TEE_Free((PVOID)Var->DataOffset);
         Var->DataSize = newSize;
         Var->DataOffset = (UINT_PTR)dstPtr;
+
+        // Track current
+        Var->AllocSize += DataSize;
+        s_currentVolatileSize += DataSize;
 
         status = TEE_SUCCESS;
         goto Cleanup;
@@ -1484,6 +1521,15 @@ ReplaceVariable(
         }
 
         // No, attempt allocation
+        remaining = DataSize - Var->DataSize;
+        // Check if there is enough volatile memory set aside
+        if(s_currentVolatileSize + remaining > MAX_VOLATILE_STORAGE)
+        {
+            EMSG("Volatile append error: Exceeds volatile variable max allocation.");
+            status = TEE_ERROR_OUT_OF_MEMORY;            
+            goto Cleanup;
+        }
+
         if (!(dstPtr = TEE_Malloc(DataSize, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
         {
             EMSG("Replace volatile variable error: Out of memory");
@@ -1499,6 +1545,8 @@ ReplaceVariable(
         Var->DataOffset = (UINT_PTR)dstPtr;
         Var->DataSize = DataSize;
         Var->Attributes.Flags = Attributes.Flags;
+        Var->AllocSize += remaining;
+        s_currentVolatileSize += remaining;
 
         status = TEE_SUCCESS;
         goto Cleanup;
@@ -1673,7 +1721,7 @@ QueryByAttribute(
         // but not the overhead caused by storing the name.
 
         if(varType = VTYPE_VOLATILE) {
-            VarSize =sizeof(UEFI_VARIABLE) + pVar->DataSize + pVar->NameSize;
+            VarSize = pVar->AllocSize - pVar->NameSize;
         } else {
             VarSize = ROUNDUP(pVar->AllocSize - pVar->NameSize, NV_AUTHVAR_ALIGNMENT);
         }
@@ -1682,8 +1730,6 @@ QueryByAttribute(
             pVar = (PUEFI_VARIABLE)(pVar->BaseAddress + pVar->NextOffset);
             VarSize += pVar->AllocSize;
         }
-
-        TotalVolatileSize += VarSize;
 
         MaxSize = MAX(MaxSize, VarSize);
         
@@ -1705,14 +1751,13 @@ QueryByAttribute(
     if (RemainingVarStorage)
     {
         if(varType = VTYPE_VOLATILE) {
-            *RemainingVarStorage = MAX_VOLATILE_STORAGE - 
-                MIN(MAX_VOLATILE_STORAGE, TotalVolatileSize);
+            *RemainingVarStorage = MAX_VOLATILE_STORAGE - s_currentVolatileSize;
             FMSG("Remaining volatile storage is 0x%x - 0x%x = 0x%x",
                     (UINT32)MAX_VOLATILE_STORAGE,
                     (UINT32)TotalVolatileSize,
                     (UINT32)*RemainingVarStorage);
         } else {
-            *RemainingVarStorage = s_nvLimit - s_nextFree - sizeof(UEFI_VARIABLE);
+            *RemainingVarStorage = s_nvLimit - s_nextFree;
             FMSG("Remaining NV storage is 0x%x", (UINT32)RemainingVarStorage);
         }
     }
