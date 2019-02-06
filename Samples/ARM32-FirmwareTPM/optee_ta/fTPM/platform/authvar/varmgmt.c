@@ -207,7 +207,7 @@ CovnertWCharToChar( WCHAR *Unicode, CHAR *Ascii, UINT32 AsciiBufferLength) {
     return returnPtr;
 }
 
-#if (TRACE_LEVEL < TRACE_DEBUG)
+#ifdef AUTHVAR_DUMP_DEBUG
 #define DumpAuthvarMemory()   (void)0
 #else
 #define DumpAuthvarMemory()   DumpAuthvarMemoryImpl()
@@ -223,9 +223,6 @@ DumpAuthvarMemoryImpl(VOID)
 
     UINT32 mainCounter = 0, linkCounter;
     BOOL isLinkedTo[NV_AUTHVAR_SIZE / sizeof(UEFI_VARIABLE)] = {0};
-
-    DMSG("pVar @ 0x%lx", (UINT_PTR)pVar);
-    DMSG("0x%lx, 0x%lx", ((UINT_PTR)pVar - (UINT_PTR)s_NV), s_nextFree);
 
     FMSG("================================");
     FMSG("Start of Authvar Memory at  0x%lx:", (UINT_PTR)s_NV);
@@ -1125,7 +1122,7 @@ RetrieveVariable(
     {
         // This is a common error case, a buffer size of 0 is often passed
         // to check the required size.
-        DMSG("Retreive variable error: result buffer too short.");
+        DMSG("Retrieve variable error: result buffer too short.");
         status = TEE_ERROR_SHORT_BUFFER;
         goto Cleanup;
     }

@@ -162,8 +162,10 @@ GetVariable(
     TEE_Result status = TEE_SUCCESS;
 
     DMSG("GetVariable");
+#ifdef AUTHVAR_DUMP_DEBUG
     char name[50];
     IMSG("\t>>>>>>>>>  %s  >>>>>>>>>", CovnertWCharToChar(GetParam->Name, name, 50));
+#endif
 
     // Validate parameters
     if (!(GetParam) || !(GetResult) || (GetParamSize  < sizeof(VARIABLE_GET_PARAM)))
@@ -231,7 +233,7 @@ GetVariable(
     {
         // No.
         status = TEE_ERROR_ITEM_NOT_FOUND;
-        EMSG("Get variable error: Name not found");
+        DMSG("Get variable warning: Name not found");
         goto Cleanup;
     }
 
@@ -245,7 +247,11 @@ GetVariable(
 
 Cleanup:
     if(status == TEE_SUCCESS) {
+#ifdef AUTHVAR_DUMP_DEBUG
         PrintBuffer(GetResult->Data, GetResult->DataSize);
+#endif
+    } else if (status == TEE_ERROR_ITEM_NOT_FOUND || status == TEE_ERROR_SHORT_BUFFER){
+        DMSG("Get returned with status: 0x%x", status);
     } else {
         EMSG("Get failed with status: 0x%x", status);
     }
@@ -439,7 +445,9 @@ GetNextVariableName(
     status = TEE_SUCCESS;
 
 Cleanup:
-    if(status!= TEE_SUCCESS) {
+    if (status == TEE_ERROR_SHORT_BUFFER || status == TEE_ERROR_ITEM_NOT_FOUND) {
+        DMSG("Get next variable returned with 0x%x", status);
+    } else if(status!= TEE_SUCCESS) {
         EMSG("Get next variable failed with 0x%x", status);
     }
     return status;
@@ -529,8 +537,10 @@ SetVariable(
     } else {
         varName = (PWSTR)ROUNDUP((UINT_PTR)(&SetParam->Payload[SetParam->OffsetName]),
                                     __alignof__(WCHAR));
+#ifdef AUTHVAR_DUMP_DEBUG
         char name[50];
         IMSG("\t<<<<<<<<<  %s  <<<<<<<<<", CovnertWCharToChar(varName, name, 50));
+#endif
     }
     data = &SetParam->Payload[SetParam->OffsetData];
 
@@ -682,7 +692,7 @@ SetVariable(
     if ((dataSize == 0) && isDeleteOperation)
     {
         status = TEE_ERROR_ITEM_NOT_FOUND;
-        IMSG("Attempted deletion of non-existing variable.");
+        DMSG("Attempted deletion of non-existing variable.");
         goto Cleanup;
     }
 
@@ -764,7 +774,11 @@ Cleanup:
     AuthvarCommitChanges();
 
     if(status == TEE_SUCCESS) {
+#ifdef AUTHVAR_DUMP_DEBUG
         PrintBuffer(&SetParam->Payload[SetParam->OffsetData], dataSize);
+#endif
+    } else if (status == TEE_ERROR_ITEM_NOT_FOUND) {
+        DMSG("Set returned with status: 0x%x", status);
     } else {
         EMSG("Set failed with status: 0x%x", status);
     }
