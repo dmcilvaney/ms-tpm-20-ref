@@ -629,9 +629,8 @@ SetVariable(
                 goto Cleanup;
             }
 
-            //TODO: Fix this?
-            //data = content;
-            //dataSize = contentSize;
+            data = content;
+            dataSize = contentSize;
         }
 
         if (isDeleteOperation)
@@ -712,9 +711,8 @@ SetVariable(
                 goto Cleanup;
             }
 
-            //TODO: Fix this?
-            //data = content;
-            //dataSize = contentSize;
+            data = content;
+            dataSize = contentSize;
         }
 
         status = CreateVariable(
