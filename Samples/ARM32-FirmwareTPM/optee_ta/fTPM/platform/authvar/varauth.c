@@ -135,16 +135,16 @@ Pkcs7Verify(
 
 static
 TEE_Result
-ParseSecurebootVariables(
+ParseSecurebootVariable(
     PBYTE Data,                     // IN
     UINT32 DataSize,                // IN
     PARSE_SECURE_BOOT_OP Op,        // IN
     CERTIFICATE *Certs,             // INOUT
-    PUINT32 NumberOfCerts           // INOUT
+    PUINT32 CertCount               // INOUT
 );
 
 TEE_Result
-ReadSecurebootVariables(
+ReadSecurebootVariable(
     SECUREBOOT_VARIABLE Id,     // IN
     BYTE** Data,                // OUT
     PUINT32 DataSize            // OUT
@@ -219,7 +219,7 @@ VerifyTime(
 
 static
 BOOLEAN
-IsBefore(
+IsAfter(
     EFI_TIME *FirstTime,            // IN
     EFI_TIME *SecondTime            // IN
 );
@@ -755,12 +755,12 @@ Cleanup:
 
 static
 TEE_Result
-ParseSecurebootVariables(
+ParseSecurebootVariable(
     PBYTE Data,                 // IN
     UINT32 DataSize,            // IN
     PARSE_SECURE_BOOT_OP Op,    // IN
     CERTIFICATE *Certs,         // INOUT
-    PUINT32 NumberOfCerts       // INOUT
+    PUINT32 CertCount           // INOUT
 )
 /*++
 
@@ -776,10 +776,10 @@ ParseSecurebootVariables(
 
         Op - Opcode to choose between parsing all certs or only x509 certs
 
-        Certs - If NULL, NumberOfCerts contains total number of certs in variable filtered by Op
+        Certs - If NULL, CertCount receives total number of certs in variable filtered by Op
                 If non-NULL, Certs contains a list of certificates
 
-        NumberOfCerts - contains total number of certs in variable filtered by Op
+        CertCount - contains total number of certs in variable filtered by Op
 
     Returns:
 
@@ -787,112 +787,143 @@ ParseSecurebootVariables(
 
 --*/
 {
-    UINT32 numberOfCerts = 0, index = 0, i, numberOfEntries, certSize = 0;
-    PBYTE locationInSigLists, locationEnd, certEntry, firstCert = NULL;
-    EFI_SIGNATURE_LIST* signatureList;
-    TEE_Result status;
-    BOOLEAN alloc = FALSE;
-
-    locationInSigLists = Data;
-    locationEnd = Data + DataSize;
+    PBYTE sigListIndex, sigListLimit, certEntry, firstCert = NULL;
+    EFI_SIGNATURE_LIST *signatureList = NULL;
+    WIN_CERTIFICATE_UEFI_GUID *authPtr = NULL;
+    UINT32 sigListOffset, certCount = 0, i, index, listEntries = 0, certSize = 0;
+    TEE_Result status = TEE_SUCCESS;
+    BOOLEAN doAlloc = FALSE;
 
     // Validate size
     if (DataSize < sizeof(EFI_SIGNATURE_LIST))
     {
-        status = TEE_ERROR_BAD_PARAMETERS;
-        goto Cleanup;
-    }
-    
-    // Integer overflow check
-    if ((UINT32)locationEnd <= (UINT32)Data)
-    {
+        DMSG("here");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
 
-    while (locationInSigLists < locationEnd)
+    // Pickup offset to signature list structure(s)
+    authPtr = &((EFI_VARIABLE_AUTHENTICATION_2 *)Data)->AuthInfo;
+    sigListOffset = authPtr->Hdr.dwLength;
+    
+    // Calculate start and end for list structure(s)
+    sigListIndex = (PBYTE)((UINTN)authPtr + sigListOffset);
+    sigListLimit = Data + DataSize;
+
+    DMSG("DATA: %x DATASIZE: %x", Data, DataSize);
+    DMSG("slO: %x slI: %x slL: %x", sigListOffset, sigListIndex, sigListLimit);
+
+    // Integer overflow check
+    if ((UINTN)sigListLimit <= (UINTN)Data)
     {
-        alloc = FALSE;
-        signatureList = (EFI_SIGNATURE_LIST*)locationInSigLists;
+        DMSG("here");
+        status = TEE_ERROR_BAD_PARAMETERS;
+        goto Cleanup;
+    }
+
+    // Init cert list index
+    index = 0;
+
+    // Enumerate signature list(s)
+    while (sigListIndex < sigListLimit)
+    {
+        doAlloc = FALSE;
+        signatureList = (EFI_SIGNATURE_LIST*)sigListIndex;
+
+        DMSG("slO: %x slI: %x slL: %x", sigListOffset, sigListIndex, sigListLimit);
 
         // Sanity check signature list
-        status = CheckSignatureList(signatureList, locationEnd, &numberOfEntries);
+        status = CheckSignatureList(signatureList, sigListLimit, &listEntries);
         if (status != TEE_SUCCESS)
         {
+            DMSG("here");
             goto Cleanup;
         }
+        DMSG("listEntries: %x", listEntries);
 
         if (Op == ParseOpAll)
         {
-            numberOfCerts += numberOfEntries;
+            certCount += listEntries;
             certSize = signatureList->SignatureSize;
             firstCert = (PBYTE)signatureList + sizeof(EFI_SIGNATURE_LIST);
-            alloc = TRUE;
+            doAlloc = TRUE;
+        }
+        else if (Op == ParseOpX509)
+        {
+            if (!(memcmp(&signatureList->SignatureType, &EfiCertX509Guid, sizeof(GUID))))
+            {
+                certCount += listEntries;
+                certSize = signatureList->SignatureSize - sizeof(EFI_SIGNATURE_DATA);
+                firstCert = (PBYTE)signatureList + sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_SIGNATURE_DATA);
+                DMSG("here");
+                doAlloc = TRUE;
+            }
         }
         else
         {
-            if (Op == ParseOpX509) 
-            {
-                if (!(memcmp(&signatureList->SignatureType, &EfiCertX509Guid, sizeof(GUID))))
-                {
-                    numberOfCerts += numberOfEntries;
-                    certSize = signatureList->SignatureSize - sizeof(EFI_SIGNATURE_DATA);
-                    firstCert = (PBYTE)signatureList + sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_SIGNATURE_DATA);
-                    alloc = TRUE;
-                }
-            }
+            // Bad Op value
+            DMSG("here");
+            status = TEE_ERROR_BAD_PARAMETERS;
+            goto Cleanup;
         }
 
-        if (alloc)
+        //  Do we have certs to parse and a list to add them to?
+        if ((doAlloc) && (Certs != NULL))
         {
-            if (Certs != NULL)
+            for (i = 0; i < listEntries; i++)
             {
-                for (i = 0; i < numberOfEntries; i++)
+                // If we didn't find anything, we shouldn't be here
+                if (!(firstCert))
                 {
-                    // REVISIT: Should be assert
-                    if (!(firstCert))
-                    {
-                        status = TEE_ERROR_BAD_PARAMETERS;
-                        goto Cleanup;
-                    }
-
-                    certEntry = firstCert + (i * signatureList->SignatureSize);
-
-                    if (index >= *NumberOfCerts)
-                    {
-                        status = TEE_ERROR_BAD_PARAMETERS;
-                        goto Cleanup;
-                    }
-
-                    InitDecodedCert(&Certs[index], certEntry, certSize, 0);
-                    if (ParseCert(&Certs[index], CERT_TYPE, NO_VERIFY, 0))
-                    {
-                        status = TEE_ERROR_BAD_PARAMETERS;
-                        goto Cleanup;
-                    }
-
-                    index++;
+                    TEE_Panic(TEE_ERROR_BAD_STATE);
+                    status = TEE_ERROR_BAD_STATE;
+                    goto Cleanup;
                 }
+
+                // Calculate location of next cert entry
+                certEntry = firstCert + (i * signatureList->SignatureSize);
+
+                // Sanity check
+                if (index >= *CertCount)
+                {
+                    DMSG("here");
+                    status = TEE_ERROR_BAD_PARAMETERS;
+                    goto Cleanup;
+                }
+
+                // Init and parse cert (wolfcrypt)
+                InitDecodedCert(&Certs[index], certEntry, certSize, 0);
+                if (ParseCert(&Certs[index], CERT_TYPE, NO_VERIFY, 0))
+                {
+                    DMSG("here");
+                    status = TEE_ERROR_BAD_PARAMETERS;
+                    goto Cleanup;
+                }
+
+                index++;
             }
         }
-
-        locationInSigLists += signatureList->SignatureListSize;
+        // Advance to next signature list
+        sigListIndex += signatureList->SignatureListSize;
     }
 
-    if (locationInSigLists != locationEnd)
+    // Index/limit mismatch?
+    if (sigListIndex != sigListLimit)
     {
+        DMSG("here");
         status = TEE_ERROR_BAD_PARAMETERS;
         goto Cleanup;
     }
 
-    *NumberOfCerts = numberOfCerts;
+    // Update count with number of certs parsed
+    *CertCount = certCount;
 
 Cleanup:
     return status;
 }
 
 TEE_Result
-ReadSecurebootVariables(
+ReadSecurebootVariable(
     SECUREBOOT_VARIABLE Id,     // IN
     BYTE** Data,                // OUT
     PUINT32 DataSize            // OUT
@@ -917,8 +948,8 @@ ReadSecurebootVariables(
 
 --*/
 {
+    VARIABLE_GET_RESULT szres = { 0 };
     PVARIABLE_GET_RESULT result = NULL;
-    PBYTE data = NULL;
     UINT32 size, expectedSize;
     PUEFI_VARIABLE var = NULL;
     TEE_Result status;
@@ -935,28 +966,37 @@ ReadSecurebootVariables(
         goto Cleanup;
     }
 
-    expectedSize = sizeof(PVARIABLE_GET_RESULT) + var->DataSize;
+    // REVISIT: Would be better if we were not required to provide
+    //          a resultBuf (szres) if all we want is the size
+    status = RetrieveVariable(var, &szres, 0, &size);
+    if (status != TEE_ERROR_SHORT_BUFFER)
+    {
+        DMSG("retrieve failed NSB");
+        goto Cleanup;
+    }
+
     if (!(result = TEE_Malloc(size, TEE_USER_MEM_HINT_NO_FILL_ZERO)))
     {
+        DMSG("out of memory size: %x", size);
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
 
-    // TODO: FIX THIS! 2nd ARG is wrong type and 3rd arg is wrong
-    status = RetrieveVariable(var, result, expectedSize, &size);
-    if ((status != TEE_SUCCESS) || (size != expectedSize))
+    status = RetrieveVariable(var, result, size, &size);
+    if (status != TEE_SUCCESS)
     {
+        DMSG("retrieve failed");
         goto Cleanup;
     }
 
     // Pass along pointer to secure boot variable
-    *Data = data;
-    *DataSize = var->DataSize;
+    *Data = result;
+    *DataSize = result->DataSize;
 
 Cleanup:
-    if((status != TEE_SUCCESS) && (data))
+    if((status != TEE_SUCCESS) && (result))
     {
-        TEE_Free(data);
+        TEE_Free(result);
     }
     return status;
 }
@@ -964,10 +1004,10 @@ Cleanup:
 static
 TEE_Result
 PopulateCerts(
-    SECUREBOOT_VARIABLE Var1,
-    SECUREBOOT_VARIABLE Var2,
+    SECUREBOOT_VARIABLE PK,
+    SECUREBOOT_VARIABLE KEK,
     CERTIFICATE **Certs,
-    PUINT32 NumberOfCerts
+    PUINT32 CertCount
 )
 /*++
 
@@ -977,13 +1017,13 @@ PopulateCerts(
 
     Arguments:
 
-        Var1 - Enum selecting secureboot variable
+        PK - Enum selecting secureboot variable
 
-        Var1 - Enum selecting secureboot variable
+        KEK - Enum selecting secureboot variable
 
         Certs - Supplies a list of certificates parsed from both the variables
 
-        NumberOfCerts - supplies number of certs in Certs
+        CertCount - supplies number of certs in Certs
 
     Returns:
 
@@ -991,117 +1031,118 @@ PopulateCerts(
 
 --*/
 {
-    UINT32 count1 = 0, count2 = 0, i, parsedCount, data1Size = 0, data2Size = 0;
     CERTIFICATE *certs = NULL;
-    PBYTE data1 = NULL, data2 = NULL;
-    TEE_Result status;
-    BOOLEAN doBoth = FALSE;
+    PVARIABLE_GET_RESULT PKvar = NULL, KEKvar = NULL;
+    UINT32 PKcount = 0, KEKcount = 0;
+    UINT32 totalParsed, PKsize, KEKsize, i;
+    TEE_Result status = TEE_ERROR_ACCESS_DENIED;
+    BOOLEAN needKEK = FALSE;
 
-    // We assume we have a Var1 (otherwise why were we called) but Var2 is optional
-    if (Var2 != SecureBootVariableEnd)
+    // We know need the PK, how about KEK database?
+    if (KEK == SecureBootVariableKEK)
     {
-        DMSG("doboth");
-        doBoth = TRUE;
+        needKEK = TRUE;
     }
 
     // Read the variable(s)
-    status = ReadSecurebootVariables(Var1, &data1, &data1Size);
+    status = ReadSecurebootVariable(PK, &PKvar, &PKsize);
     if (status != TEE_SUCCESS)
     {
-        DMSG("readsecure failed00000 %x", status);
         goto Cleanup;
     }
 
-    // Find how many certs qualify and allocate memory for the list accordingly
-    status = ParseSecurebootVariables(data1, data1Size, ParseOpX509, NULL, &count1);
+    // Pick up x509 cert(s) from PK
+    status = ParseSecurebootVariable(PKvar->Data, PKsize, ParseOpX509, NULL, &PKcount);
     if (status != TEE_SUCCESS)
     {
-        DMSG("ParseSecurebootVariables0000 %x", status); 
+        DMSG("here");
         goto Cleanup;
     }
 
-    if (doBoth)
+    // Do we need to also collect certs from KEK database?
+    if (needKEK)
     {
         // Read the variable(s)
-        status = ReadSecurebootVariables(Var2, &data2, &data2Size);
+        status = ReadSecurebootVariable(KEK, &KEKvar, &KEKsize);
         if (status != TEE_SUCCESS)
         {
-            DMSG("readsecure failed1111 %x", status);
+            DMSG("here");
             goto Cleanup;
         }
 
-        // Find how many certs qualify and allocate memory for the list accordingly
-        status = ParseSecurebootVariables(data2, data2Size, ParseOpX509, NULL, &count2);
+        // Pick up x509 cert(s) from KEK
+        status = ParseSecurebootVariable(KEKvar->Data, KEKsize, ParseOpX509, NULL, &KEKcount);
         if (status != TEE_SUCCESS)
         {
-            DMSG("ParseSecurebootVariables failed1111 %x", status);
+            DMSG("here");
             goto Cleanup;
         }
     }
 
-    certs = TEE_Malloc((sizeof(CERTIFICATE) * (count1 + count2)), TEE_USER_MEM_HINT_NO_FILL_ZERO);
+    // Alloc space for collected certs
+    certs = TEE_Malloc((sizeof(CERTIFICATE) * (PKcount + KEKcount)), TEE_USER_MEM_HINT_NO_FILL_ZERO);
     if (!certs)
     {
-        DMSG("malloc failed1111 %lx", (UINTN)certs);
         status = TEE_ERROR_OUT_OF_MEMORY;
         goto Cleanup;
     }
 
-    parsedCount = count1;
+    // Now do the allocs
+    totalParsed = PKcount;
 
-    status = ParseSecurebootVariables(data1, data1Size, ParseOpX509, certs, &parsedCount);
+    status = ParseSecurebootVariable(PKvar->Data, PKsize, ParseOpX509, certs, &totalParsed);
     if (status != TEE_SUCCESS)
     {
-        DMSG("ParseSecurebootVariables failed2222 %x", status);
+        DMSG("here");
         goto Cleanup;
     }
 
-    // TODO: Should be assert
-    if (parsedCount != count1)
+    // Should not happen
+    if (totalParsed != PKcount)
     {
-        DMSG("parsedCount %x, count: %x", parsedCount, count1);
-        status = TEE_ERROR_BAD_PARAMETERS;
+        TEE_Panic(TEE_ERROR_BAD_STATE);
+        status = TEE_ERROR_BAD_STATE;
         goto Cleanup;
     }
 
-    if (doBoth)
+    if (needKEK)
     {
-        parsedCount = count2;
+        totalParsed = KEKcount;
 
-        status = ParseSecurebootVariables(data2, data2Size, ParseOpX509, &certs[count1], &parsedCount);
+        status = ParseSecurebootVariable(KEKvar->Data, KEKsize, ParseOpX509, &certs[PKcount], &totalParsed);
         if (status != TEE_SUCCESS)
         {
-            DMSG("ParseSecurebootVariables failed33333 %x", status);
+            DMSG("here");
             goto Cleanup;
         }
 
-        // TODO: Should be assert
-        if (parsedCount != count2)
+        // Should not happen
+        if (totalParsed != KEKcount)
         {
-            DMSG("parsedCount22222 %x, count: %x", parsedCount, count2);
-            status = TEE_ERROR_BAD_PARAMETERS;
+            TEE_Panic(TEE_ERROR_BAD_STATE);
+            status = TEE_ERROR_BAD_STATE;
             goto Cleanup;
         }
     }
 
     *Certs = certs;
-    *NumberOfCerts = count1 + count2;
-    DMSG("NumberOfCerts: %x", *NumberOfCerts);
+    *CertCount = PKcount + KEKcount;
+    DMSG("NumberOfCerts: %x", CertCount);
 
 Cleanup:
-    TEE_Free(data1);
-    TEE_Free(data2);
+    TEE_Free(PKvar);
+    TEE_Free(KEKvar);
 
     if (status != TEE_SUCCESS)
     {
-        for (i = 0; i < count1; i++)
+        for (i = 0; i < PKcount; i++)
         {
-            FreeDecodedCert(&certs[i]);
+            FreeDecodedCert(&(certs[i]));
         }
 
-        for (i = count1; i < (count1 + count2); i++)
+        for (i = PKcount; i < (PKcount + KEKcount); i++)
         {
-            FreeDecodedCert(&certs[i]);
+            FreeDecodedCert(&(certs[i]));
         }
     }
 
@@ -1113,7 +1154,7 @@ TEE_Result
 CheckSignatureList(
     EFI_SIGNATURE_LIST* SignatureList,  // IN
     PBYTE SignatureListEnd,             // IN
-    PUINT32 NumberOfEntries             // IN
+    PUINT32 NumberOfEntries             // OUT
 )
 /*++
 
@@ -1135,45 +1176,53 @@ CheckSignatureList(
 
 --*/
 {
-    TEE_Result status;
-    UINT32 count;
+    INT32 listBytes;
+    TEE_Result status = TEE_ERROR_BAD_PARAMETERS; // Assume failure
+
+    DMSG("SL: %x, slEnd: %x, so(SL): %x, sls: %x",
+        (PBYTE)SignatureList, SignatureListEnd, sizeof(EFI_SIGNATURE_LIST), SignatureList->SignatureListSize);
 
     // Sanity checks on the signature list
     if (((SignatureListEnd - (PBYTE)SignatureList) < (INT_PTR)sizeof(EFI_SIGNATURE_LIST))
         || (((PBYTE)SignatureList + SignatureList->SignatureListSize) < (PBYTE)SignatureList)
         || (((PBYTE)SignatureList + SignatureList->SignatureListSize) > SignatureListEnd))
     {
-        DMSG("FAILED0");
         status = TEE_ERROR_BAD_PARAMETERS;
+        DMSG("here");
         goto Cleanup;
     }
 
+    // Sanity check list size
     if ((SignatureList->SignatureListSize == 0) ||
         (SignatureList->SignatureListSize < sizeof(EFI_SIGNATURE_LIST)))
     {
-        DMSG("FAILED1");
         status = TEE_ERROR_BAD_PARAMETERS;
+        DMSG("here");
         goto Cleanup;
     }
 
-    count = SignatureList->SignatureListSize - sizeof(EFI_SIGNATURE_LIST);
-
-    if ((count == 0) || (count % SignatureList->SignatureSize))
+    // Ensure list size is non-zero and a multiple of SignatureSize
+    listBytes = SignatureList->SignatureListSize - sizeof(EFI_SIGNATURE_LIST);
+    if ((listBytes <= 0) || (listBytes % SignatureList->SignatureSize))
     {
-        DMSG("FAILED2");
         status = TEE_ERROR_BAD_PARAMETERS;
+        DMSG("here");
         goto Cleanup;
     }
 
+    // We only deal with EFI_CERT_X509_GUID-type certs and it has no header
     if (SignatureList->SignatureHeaderSize != 0)
     {
-        DMSG("FAILED3");
         status = TEE_ERROR_BAD_PARAMETERS;
+        DMSG("here");
         goto Cleanup;
     }
 
+    // All checks passed.
+    status = TEE_SUCCESS;
     *NumberOfEntries = (SignatureList->SignatureListSize - sizeof(EFI_SIGNATURE_LIST)) /
                                         SignatureList->SignatureSize;
+    DMSG("here");
 
 Cleanup:
     return status;
@@ -1295,47 +1344,6 @@ AuthenticateSetVariable(
         goto Cleanup;
     }
     
-    //
-    //{
-    //    volatile uint32_t counter0, counter1, mainCounter;
-    //    static volatile uint32_t collector = 1;
-    //    int i;
-    //
-    //    DMSG("DS:%x SDS:%x smdS: %x", DataSize, signedDataSize, dataSize);
-    //
-    //    DMSG("****************");
-    //    for (i = 0; i < ((dataSize) / 16 + 1); i++)
-    //    {
-    //        //DHEXDUMP((Data + (i * 16)), 16);
-    //        DHEXDUMP((data + (i * 16)), 16);
-    //        for (counter1 = 1; counter1 < 10000000; counter1++) {
-    //            collector = (collector + 1) * mainCounter;
-    //        }
-    //    }
-    //    //DMSG("****************");
-    //    //for (counter0 = 1; counter0 < 100000; counter0++) {
-    //    //    mainCounter++;
-    //    //    for (counter1 = 1; counter1 < 100000; counter1++) {
-    //    //        collector = (collector + 1) * mainCounter;
-    //    //    }
-    //    //}
-    //    //for (i = 0; i < ((signedDataSize) / 16 + 1); i++)
-    //    //{
-    //    //    DHEXDUMP((signedData + (i * 16)), 16);
-    //    //    for (counter1 = 1; counter1 < 10000000; counter1++) {
-    //    //        collector = (collector + 1) * mainCounter;
-    //    //    }
-    //    //}
-    //
-    //    DMSG("****************");
-    //    for (counter0 = 1; counter0 < 1000; counter0++) {
-    //        mainCounter++;
-    //        for (counter1 = 1; counter1 < 1000; counter1++) {
-    //            collector = (collector + 1) * mainCounter;
-    //        }
-    //    }
-    //}
-
     // If we have a time field, make sure it is updated (unless this is an append)
     if ((Attributes.AppendWrite) || (Var == NULL))
     {
@@ -1662,93 +1670,107 @@ SecureBootVarAuth(
            - The serialized stream of the UEFI variable info + payload data.
 --*/
 {
-    SECUREBOOT_VARIABLE var2 = SecureBootVariableEnd;
+    SECUREBOOT_VARIABLE needKEK;
     DecodedCert *certs = NULL;
-    UINT32 numberOfCerts = 0, i;
-    TEE_Result status;
+    UINT32 certCount = 0, i;
+    TEE_Result status = TEE_ERROR_ACCESS_DENIED;
     BOOLEAN verifyStatus = FALSE;
 
+    // Unused parameters
     UNUSED_PARAMETER(Data);
     UNUSED_PARAMETER(DataSize);
 
+    // Assume we won't need to also check against KEK database
+    needKEK = SecureBootVariableEnd;
+
+    // Are we trying to touch db(x)?
     if ((Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX))
     {
-        DMSG("KEK");
-        var2 = SecureBootVariableKEK;
+        // Yes, need KEK too
+        needKEK = SecureBootVariableKEK;
+    }
+    else
+    {
+        // Ok, not db(x), is Id valid?
+        if ((Id != SecureBootVariablePK) && (Id != SecureBootVariableKEK))
+        {
+            // No, bad secure boot variable ID
+            status = TEE_ERROR_ACCESS_DENIED;
+            goto Cleanup;
+        }
     }
 
-    // TODO: ADD ASSERT ON Id CHECK
-    // ASSERT((Id == SecureBootVariablePK) || (Id == SecureBootVariableKEK) ||
-    //     (Id == SecureBootVariableDB) || (Id == SecureBootVariableDBX));
-
     // Perform signature validation and check if we trust the signing certificate
-    DMSG("inhere");
     if (SecureBootInUserMode)
     {
-        DMSG("SecureBootInUserMode");
-
-        status = PopulateCerts(SecureBootVariablePK, var2, &certs, (PUINT32)&numberOfCerts);
-        DMSG("PopulateCerts: %x, certs: %p", status, certs);
-
+        // In user mode touching a secure boot variable, collect certs for auth
+        status = PopulateCerts(SecureBootVariablePK, needKEK, &certs, (PUINT32)&certCount);
         if (status != TEE_SUCCESS)
         {
+            DMSG("Populate certs failed");
             goto Cleanup;
         }
 
+        // Nothing returned, not expected but definitely fatal
         if (certs == NULL)
         {
             status = TEE_ERROR_ACCESS_DENIED;
             goto Cleanup;
         }
 
+        // Do the verification
         verifyStatus = Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
-                                   numberOfCerts, certs,
+                                   certCount, certs,
                                    DataToVerify, DataToVerifySize);
 
-        // DEBUG/REVISIT/TODO: REMOVE THIS!!
-        verifyStatus = 1;
-
         // Free resources used on verify
-        for (i = 0; i < numberOfCerts; i++)
+        for (i = 0; i < certCount; i++)
         {
-            FreeDecodedCert(&certs[i]);
+            FreeDecodedCert(&(certs[i]));
         }
 
+        // Free list
         TEE_Free(certs);
 
+        // Success/failure
         if (!verifyStatus)
         {
             status = TEE_ERROR_ACCESS_DENIED;
             goto Cleanup;
         }
     }
-
-    //
-    // If in setup mode, only PK needs to be signed by its corresponding PKpriv
-    //
-    // The provisioning code in EDK2 does not populate any AuthenticationData
-    // along with the certificate (see CreateTimeBasedPayload).
-    //
-    else if (Id == SecureBootVariablePK)
-    {
-        // Verify Pkcs7 AuthenticationData
-        if (!(Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
-                          0, NULL,
-                          DataToVerify, DataToVerifySize)))
-        {
-            status = TEE_ERROR_ACCESS_DENIED;
-            goto Cleanup;
-        }
-
-        // Switch from setup mode
-        SecureBootInUserMode = TRUE;
-    }
+    // We're in setup mode, only PK needs to be signed (self-signed)
     else
     {
-        // PASSED BY DEFAULT
+        if (Id == SecureBootVariablePK)
+        {
+            // Verify Pkcs7 AuthenticationData
+            verifyStatus = Pkcs7Verify(AuthenticationData, AuthenticationDataSize,
+                                       0, NULL,
+                                       DataToVerify, DataToVerifySize);
+
+            // Success/failure
+            if (!verifyStatus)
+            {
+                status = TEE_ERROR_ACCESS_DENIED;
+                goto Cleanup;
+            }
+
+            // Switch from setup mode
+            SecureBootInUserMode = TRUE;
+        }
+        else
+        {
+            // Already validated Id so we're good
+            verifyStatus = TRUE;
+        }
     }
 
-    status = TEE_SUCCESS;
+    // Ensure proper return status on fall through
+    if (verifyStatus)
+    {
+        status = TEE_SUCCESS;
+    }
 
  Cleanup:
     return status;
@@ -1816,7 +1838,7 @@ VerifyTime(
 
         FirstTime - Timestamp which is checked for correctness
 
-        SecondTime - Optional. If provided should be less than EfiTime
+        SecondTime - Optional. If provided, should be "not after" FirstTime
 
     Return Value:
 
@@ -1833,7 +1855,6 @@ VerifyTime(
         (FirstTime->Daylight != 0) ||
         (FirstTime->Pad2 != 0))
     {
-        DMSG("asdasdasd");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -1843,10 +1864,9 @@ VerifyTime(
         return TEE_SUCCESS;
     }
 
-    // Ensure FirstTime IsBefore SecondTime
-    if (!IsBefore(FirstTime, SecondTime))
+    // Ensure FirstTime is not after SecondTime
+    if (IsAfter(SecondTime, FirstTime))
     {
-        DMSG("BBBEEEFFFOOORRREEE");
         return TEE_ERROR_ACCESS_DENIED;
     }
 
@@ -1855,36 +1875,30 @@ VerifyTime(
 
 static
 BOOLEAN
-IsBefore(
+IsAfter(
     EFI_TIME *FirstTime,        // IN
     EFI_TIME *SecondTime        // IN
 )
 {
     if (FirstTime->Year != SecondTime->Year)
     {
-        DMSG("y");
         return (FirstTime->Year < SecondTime->Year);
     }
     else if (FirstTime->Month != SecondTime->Month)
     {
-        DMSG("m");
         return (FirstTime->Month < SecondTime->Month);
     }
     else if (FirstTime->Day != SecondTime->Day)
     {
-        DMSG("d");
         return (FirstTime->Day < SecondTime->Day);
     }
     else if (FirstTime->Hour != SecondTime->Hour)
     {
-        DMSG("h");
         return (FirstTime->Hour < SecondTime->Hour);
     }
     else if (FirstTime->Minute != SecondTime->Minute)
     {
-        DMSG("m");
         return (FirstTime->Minute < SecondTime->Minute);
     }
-    DMSG("s");
     return (FirstTime->Second < SecondTime->Second);
 }

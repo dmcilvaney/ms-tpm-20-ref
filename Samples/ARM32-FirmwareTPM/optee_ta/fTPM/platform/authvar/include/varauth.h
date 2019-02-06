@@ -118,6 +118,10 @@ typedef struct _WIN_CERTIFICATE_UEFI_GUID
 } WIN_CERTIFICATE_UEFI_GUID;
 #pragma pack(pop)
 
+#define WIN_CERT_TYPE_PKCS_SIGNED_DATA  0x0002
+#define WIN_CERT_TYPE_EFI_PKCS115       0x0EF0
+#define WIN_CERT_TYPE_EFI_GUID          0x0EF1
+
 #pragma pack(push, 1)
 typedef struct _EFI_SIGNATURE_DATA
 {
